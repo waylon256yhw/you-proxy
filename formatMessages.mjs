@@ -1,4 +1,18 @@
-export function formatMessages(messages, proxyModel, randomFileName) {
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// 白名单缓存
+let whitelistCache = null;
+let whitelistLastModified = 0;
+// 提示语缓存
+let promptMessageCache = null;
+let promptMessageLastModified = 0;
+
+export function formatMessages(messages, proxyModel, randomFileName, requestInfo = {}) {
     // 检查是否是 Claude 模型
     const isClaudeModel = proxyModel.toLowerCase().includes('claude');
 
@@ -60,7 +74,291 @@ export function formatMessages(messages, proxyModel, randomFileName) {
         return newMessage;
     });
 
+    // 提示词检测
+    performPromptValidation(messages, requestInfo);
+
     return messages;
+}
+
+/**
+ * 白名单配置
+ * @returns {Object}
+ */
+function loadWhitelistConfig() {
+    const promptCheckDir = path.join(__dirname, 'prompt_checks');
+    const whitelistPath = path.join(promptCheckDir, 'whitelist.json');
+
+    try {
+        if (fs.existsSync(whitelistPath)) {
+            const stats = fs.statSync(whitelistPath);
+            const currentModified = stats.mtimeMs;
+
+            // 检查文件是否被修改
+            if (!whitelistCache || currentModified > whitelistLastModified) {
+                const content = fs.readFileSync(whitelistPath, 'utf8');
+                const config = JSON.parse(content);
+
+                // 验证配置格式
+                if (!config.ips || !Array.isArray(config.ips)) {
+                    console.error('Invalid whitelist.json format: missing or invalid "ips" array');
+                    return { ips: [] };
+                }
+
+                // 标准化 IP 格式
+                config.ips = config.ips.map(ip => ip.trim()).filter(ip => ip.length > 0);
+
+                // 更新缓存
+                whitelistCache = config;
+                whitelistLastModified = currentModified;
+            }
+
+            return whitelistCache;
+        }
+    } catch (error) {
+        console.error('Failed to load whitelist.json:', error);
+    }
+
+    return { ips: [] };
+}
+
+/**
+ * 检查 IP（支持精确匹配和通配符）
+ * @param {string} clientIp - 客户端 IP
+ * @param {Array<string>} whitelistIps - 白名单 IP 列表
+ * @returns {boolean}
+ */
+function isIpWhitelisted(clientIp, whitelistIps) {
+    if (!clientIp || !whitelistIps || whitelistIps.length === 0) {
+        return false;
+    }
+
+    // 标准化 IP
+    const normalizedClientIp = clientIp.split(':')[0].trim();
+
+    // 检查 IPv6 地址 IPv4 映射
+    const ipv4Mapped = normalizedClientIp.match(/^::ffff:(.+)$/);
+    const checkIp = ipv4Mapped ? ipv4Mapped[1] : normalizedClientIp;
+
+    return whitelistIps.some(whitelistIp => {
+        // 通配符 * 匹配
+        if (whitelistIp.includes('*')) {
+            const pattern = whitelistIp
+                .split('.')
+                .map(part => part === '*' ? '\\d{1,3}' : part)
+                .join('\\.');
+            const regex = new RegExp(`^${pattern}$`);
+            return regex.test(checkIp);
+        }
+
+        // 精确匹配
+        return checkIp === whitelistIp;
+    });
+}
+
+/**
+ * 提示词验证
+ * @param {Array} messages
+ * @param {Object} requestInfo - 请求信息
+ * @throws {Error}
+ */
+function performPromptValidation(messages, requestInfo = {}) {
+    const promptCheckDir = path.join(__dirname, 'prompt_checks');
+
+    if (requestInfo.ip) {
+        const whitelistConfig = loadWhitelistConfig();
+        if (isIpWhitelisted(requestInfo.ip, whitelistConfig.ips)) {
+            console.warn(`IP ${requestInfo.ip} 白名单，跳过提示词检测`);
+            return;
+        }
+    }
+
+    // 读取所有检测文件
+    let checkFiles = [];
+    try {
+        if (fs.existsSync(promptCheckDir)) {
+            checkFiles = fs.readdirSync(promptCheckDir)
+                .filter(file => file.endsWith('.txt'))
+                .map(file => ({
+                    name: file,
+                    path: path.join(promptCheckDir, file),
+                    content: fs.readFileSync(path.join(promptCheckDir, file), 'utf8').trim()
+                }))
+                .filter(file => file.content.length > 0); // 过滤空文件
+        }
+    } catch (error) {
+        console.error('Failed to read prompt check files:', error);
+        return;
+    }
+
+    // 没有检测文件
+    if (checkFiles.length === 0) {
+        return;
+    }
+
+    const allContent = messages
+        .map(msg => typeof msg.content === 'string' ? msg.content : '')
+        .join('\n');
+
+    const unmatchedFiles = [];
+
+    for (const checkFile of checkFiles) {
+        const similarity = calculateSimilarity(allContent, checkFile.content);
+
+        if (similarity < 0.8) { // 相似度低于80%
+            unmatchedFiles.push({
+                file: checkFile.name,
+                similarity: (similarity * 100).toFixed(2)
+            });
+        }
+    }
+
+    if (unmatchedFiles.length > 0) {
+        const ipInfo = requestInfo.ip ? ` | IP: ${requestInfo.ip}` : '';
+        console.error(`Prompt validation failed: ${JSON.stringify(unmatchedFiles)}${ipInfo}`);
+
+        const customMessage = loadPromptMessage();
+        const errorMessage = customMessage || 'Invalid request: prompt validation failed';
+
+        throw new Error(errorMessage);
+    }
+}
+
+/**
+ * 加载提示语
+ * @returns {string|null}
+ */
+function loadPromptMessage() {
+    const promptCheckDir = path.join(__dirname, 'prompt_checks');
+    const messagePath = path.join(promptCheckDir, 'prompt_message.json');
+
+    try {
+        if (fs.existsSync(messagePath)) {
+            const stats = fs.statSync(messagePath);
+            const currentModified = stats.mtimeMs;
+
+            if (!promptMessageCache || currentModified > promptMessageLastModified) {
+                const content = fs.readFileSync(messagePath, 'utf8');
+                const config = JSON.parse(content);
+
+                // 更新缓存
+                promptMessageCache = config.message || null;
+                promptMessageLastModified = currentModified;
+            }
+
+            return promptMessageCache;
+        }
+    } catch (error) {
+        console.error('Failed to load prompt_message.json:', error);
+    }
+
+    return null;
+}
+
+/**
+ * 相似度计算（n-gram 字符串匹配）
+ * @param {string} text1 - 文本1（较长的文本）
+ * @param {string} text2 - 文本2（需要检查的内容）
+ * @returns {number} 相似度（0-1）
+ */
+function calculateSimilarity(text1, text2) {
+    if (!text2) return 0;
+
+    // 100%匹配
+    if (text1.includes(text2)) {
+        return 1;
+    }
+
+    const n = 3; // trigram
+    const text2Grams = getNGrams(text2.toLowerCase(), n);
+
+    if (text2Grams.size === 0) return 0;
+
+    // 短文本使用滑动窗口
+    if (text2.length < 500) {
+        let maxSimilarity = 0;
+        const windowSize = text2.length;
+        const step = Math.max(1, Math.floor(windowSize / 20)); // 优化步长
+
+        for (let i = 0; i <= text1.length - windowSize; i += step) {
+            const window = text1.substring(i, i + windowSize).toLowerCase();
+            const windowGrams = getNGrams(window, n);
+
+            const similarity = calculateNGramSimilarity(text2Grams, windowGrams);
+            maxSimilarity = Math.max(maxSimilarity, similarity);
+
+            if (maxSimilarity >= 0.8) {
+                return maxSimilarity;
+            }
+        }
+
+        return maxSimilarity;
+    } else {
+        // 长文本使用分块
+        const text1Lower = text1.toLowerCase();
+        const chunks = [];
+        const chunkSize = text2.length;
+
+        for (let i = 0; i < text1Lower.length; i += chunkSize / 2) {
+            chunks.push(text1Lower.substring(i, i + chunkSize));
+        }
+
+        let maxSimilarity = 0;
+        for (const chunk of chunks) {
+            const chunkGrams = getNGrams(chunk, n);
+            const similarity = calculateNGramSimilarity(text2Grams, chunkGrams);
+            maxSimilarity = Math.max(maxSimilarity, similarity);
+
+            if (maxSimilarity >= 0.8) {
+                return maxSimilarity;
+            }
+        }
+
+        return maxSimilarity;
+    }
+}
+
+/**
+ * 获取 n-gram 集合
+ * @param {string} text - 输入文本
+ * @param {number} n - gram 大小
+ * @returns {Set} n-gram 集合
+ */
+function getNGrams(text, n) {
+    const grams = new Set();
+
+    if (text.length < n) {
+        grams.add(text);
+        return grams;
+    }
+
+    for (let i = 0; i <= text.length - n; i++) {
+        grams.add(text.substring(i, i + n));
+    }
+
+    return grams;
+}
+
+/**
+ * 计算两个 n-gram 集合相似度
+ * @param {Set} grams1 - 第一个 n-gram
+ * @param {Set} grams2 - 第二个 n-gram
+ * @returns {number} 相似度（0-1）
+ */
+function calculateNGramSimilarity(grams1, grams2) {
+    if (grams1.size === 0 || grams2.size === 0) return 0;
+
+    let intersection = 0;
+
+    const [smaller, larger] = grams1.size <= grams2.size ? [grams1, grams2] : [grams2, grams1];
+
+    for (const gram of smaller) {
+        if (larger.has(gram)) {
+            intersection++;
+        }
+    }
+
+    const union = grams1.size + grams2.size - intersection;
+    return intersection / union;
 }
 
 /**

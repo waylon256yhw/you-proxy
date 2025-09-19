@@ -4,43 +4,51 @@ import HttpsProxyAgent from 'https-proxy-agent';
 import {createRequestTLSOptions} from './utils/tlsConfig.mjs';
 import fs from 'fs/promises';
 import path from 'path';
+import dns from 'dns/promises';
 
 class ModelManager {
     constructor() {
         this.defaultModels = [
+            "gpt_4_1",
+            "gpt_4_1_mini",
+            "openai_o3",
+            "openai_o3_pro",
+            "openai_o4_mini_high",
             "openai_o3_mini_high",
-            "openai_o3_mini_medium",
             "openai_o1",
-            "openai_o1_preview",
-            "gpt_4_5_preview",
+            "gpt_4o_mini",
             "gpt_4o",
-            "gpt_4_turbo",
-            "gpt_4",
-            "claude_3_7_sonnet",
+            "claude_4_sonnet_thinking",
+            "claude_4_sonnet",
             "claude_3_7_sonnet_thinking",
+            "claude_3_7_sonnet",
             "claude_3_5_sonnet",
+            "claude_4_opus_thinking",
+            "claude_4_opus",
             "claude_3_opus",
-            "claude_3_sonnet",
-            "claude_3_haiku",
-            "claude_2",
-            "llama3",
-            "gemini_pro",
-            "gemini_1_5_pro",
-            "gemini_1_5_flash",
-            "databricks_dbrx_instruct",
-            "command_r",
-            "command_r_plus",
-            "zephyr",
-            "qwen2p5_72b",
-            "llama3_1_405b",
+            "grok_4",
+            "grok_3",
+            "grok_3_mini",
             "grok_2",
+            "qwen3_235b",
+            "qwq_32b",
+            "qwen2p5_72b",
+            "qwen2p5_coder_32b",
             "deepseek_r1",
-            "deepseek_v3"
+            "deepseek_v3",
+            "gemini_2_5_pro_preview",
+            "gemini_2_5_flash_preview",
+            "gemini_2_flash",
+            "llama4_maverick",
+            "llama4_scout",
+            "llama3_3_70b",
+            "mistral_large_2",
+            "nous_hermes_2"
         ];
 
         this.availableModels = [...this.defaultModels]; // 当前使用模型列表
         this.lastRefreshTime = 0; // 最近刷新
-        this.defaultBuildHash = "812b7f218a5e148fdc739ca2c4bdd644742fa03d"; // 默认哈希值
+        this.defaultBuildHash = "602a816d-a27e-4f89-ae83-7d093ff927cc"; // 默认哈希值
         this.requestTimeouts = {
             connectTimeout: 8000,  // 连接超时(ms)
             requestTimeout: 12000  // 请求总超时(ms)
@@ -55,6 +63,8 @@ class ModelManager {
 
         this.regionDetected = false;
         this.isChinaRegion = false; // CN地区
+        this.networkTestResult = null; // 网络测试结果
+
         this.detectRegion(); // 初始化检测
         this.initialize();
     }
@@ -76,38 +86,126 @@ class ModelManager {
     /**
      * 检测地区
      */
-    detectRegion() {
+    async detectRegion() {
         if (this.regionDetected) {
             return;
         }
 
         try {
+            // 强制设置环境变量
+            const forceRegion = process.env.FORCE_REGION || '';
+            if (forceRegion) {
+                if (forceRegion.toUpperCase() === 'CN') {
+                    this.isChinaRegion = true;
+                    this.regionDetected = true;
+                    console.log('Region detection: Forced to CN by FORCE_REGION');
+                    return;
+                } else if (forceRegion.toUpperCase() === 'GLOBAL' || forceRegion.toUpperCase() === 'US') {
+                    this.isChinaRegion = false;
+                    this.regionDetected = true;
+                    console.log('Region detection: Forced to GLOBAL by FORCE_REGION');
+                    return;
+                }
+            }
+
+            // 设置跳过CN检测
+            if (process.env.SKIP_CN_DETECTION === 'true') {
+                this.isChinaRegion = false;
+                this.regionDetected = true;
+                console.log('Region detection: Skipped CN detection by SKIP_CN_DETECTION');
+                return;
+            }
+
+            // 是否有代理设置
+            if (this.hasProxyConfigured()) {
+                this.isChinaRegion = false;
+                this.regionDetected = true;
+                console.log('Region detection: Proxy detected, assuming non-CN environment');
+                return;
+            }
+
+            // 环境变量中地区设置
             const envRegion = (process.env.REGION || '').toUpperCase();
             if (envRegion === 'CN' || envRegion === 'CHINA') {
                 this.isChinaRegion = true;
                 this.regionDetected = true;
+                console.log('Region detection: CN detected by REGION env');
                 return;
             }
 
-            const locale = process.env.LANG || process.env.LANGUAGE || process.env.LC_ALL || '';
-            if (locale.includes('zh_CN')) {
-                this.isChinaRegion = true;
-                this.regionDetected = true;
-                return;
+            // 系统语言设置
+            // const locale = process.env.LANG || process.env.LANGUAGE || process.env.LC_ALL || '';
+            // if (locale.includes('zh_CN') || locale.includes('zh-CN')) {
+            //     this.isChinaRegion = true;
+            //     this.regionDetected = true;
+            //     console.log('Region detection: CN detected by system locale');
+            //     return;
+            // }
+
+            // 检查时区
+            try {
+                const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                const cnTimezones = [
+                    'Asia/Shanghai', 'Asia/Chongqing', 'Asia/Harbin',
+                    'Asia/Urumqi', 'Asia/Hong_Kong', 'Asia/Macau'
+                ];
+                if (cnTimezones.includes(timezone)) {
+                    this.isChinaRegion = true;
+                    this.regionDetected = true;
+                    console.log(`Region detection: CN detected by timezone (${timezone})`);
+                    return;
+                }
+            } catch (e) {
             }
-            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            if (timezone === 'Asia/Shanghai' || timezone === 'Asia/Chongqing' ||
-                timezone === 'Asia/Harbin' || timezone === 'Asia/Urumqi' ||
-                timezone === 'Asia/Hong_Kong') {
-                this.isChinaRegion = true;
-                this.regionDetected = true;
-                return;
+
+            // 网络可达性测试
+            if (process.env.ENABLE_NETWORK_TEST === 'true') {
+                const isBlocked = await this.testNetworkAccessibility();
+                if (isBlocked) {
+                    this.isChinaRegion = true;
+                    this.regionDetected = true;
+                    console.log('Region detection: CN detected by network test');
+                    return;
+                }
             }
+
+            // 默认非CN地区
+            this.isChinaRegion = false;
             this.regionDetected = true;
+            console.log('Region detection: Defaulting to non-CN environment');
+
         } catch (error) {
             console.error(`Error detecting region: ${error.message}`);
             this.regionDetected = true;
             this.isChinaRegion = false;
+        }
+    }
+
+    /**
+     * 网络可达性测试
+     * @returns {Promise<boolean>} true if blocked (likely CN)
+     */
+    async testNetworkAccessibility() {
+        try {
+            const testUrl = 'https://you.com/api/health';
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 5000);
+
+            const response = await fetch(testUrl, {
+                method: 'HEAD',
+                signal: controller.signal,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+            });
+
+            clearTimeout(timeout);
+            this.networkTestResult = response.ok ? 'accessible' : 'blocked';
+            return !response.ok;
+
+        } catch (error) {
+            this.networkTestResult = 'blocked';
+            return true;
         }
     }
 
@@ -118,22 +216,45 @@ class ModelManager {
     hasProxyConfigured() {
         const proxyUrl = process.env.https_proxy || process.env.HTTPS_PROXY ||
             process.env.http_proxy || process.env.HTTP_PROXY;
+
+        if (process.env.DEBUG_PROXY === 'true') {
+            console.log('Proxy environment variables:', {
+                http_proxy: process.env.http_proxy,
+                https_proxy: process.env.https_proxy,
+                HTTP_PROXY: process.env.HTTP_PROXY,
+                HTTPS_PROXY: process.env.HTTPS_PROXY,
+                detected: !!proxyUrl
+            });
+        }
+
         return !!proxyUrl;
     }
 
     /**
+     * 是否跳过模型请求
      * @returns {boolean}
      */
     shouldSkipModelRequest() {
+        // 强制获取模型
         if (process.env.FORCE_MODEL_FETCH === 'true') {
+            console.log('Forcing model fetch (FORCE_MODEL_FETCH=true)');
             return false;
         }
 
+        // 使用 Cloudflare Worker
         if (this.useCloudflareWorker) {
+            console.log('Using Cloudflare Worker for model fetch');
             return false;
         }
 
-        return this.isChinaRegion && !this.hasProxyConfigured();
+        // 有代理配置
+        if (this.hasProxyConfigured()) {
+            console.log('Proxy configured, will attempt model fetch');
+            return false;
+        }
+
+        // 返回CN地区状态
+        return this.isChinaRegion;
     }
 
     /**
@@ -363,9 +484,12 @@ class ModelManager {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
                     'Accept': 'application/json',
                     'Accept-Language': 'en-US,en;q=0.9',
-                    'Cache-Control': 'no-cache'
+                    'Cache-Control': 'no-cache',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Connection': 'keep-alive'
                 },
-                timeout: this.requestTimeouts.requestTimeout
+                timeout: this.requestTimeouts.requestTimeout,
+                compress: true // 启用压缩
             };
             if (proxyAgent) {
                 requestOptions.agent = proxyAgent;
@@ -423,7 +547,7 @@ class ModelManager {
 
             this.availableModels = [...modelIds];
             this.lastError = null;
-            console.log(`成功获取 ${modelIds.length} 个模型 ID`);
+            console.log(`✅ 成功获取 ${modelIds.length} 个模型 ID`);
             return modelIds;
 
         } catch (error) {
@@ -606,10 +730,27 @@ class ModelManager {
             lastError: this.lastError,
             useWorkerApi: this.useCloudflareWorker,
             buildHash: this.getBuildHash(),
-            region: this.isChinaRegion ? 'CN' : 'non-CN',
-            proxyConfigured: this.hasProxyConfigured(),
+            region: {
+                detected: this.isChinaRegion ? 'CN' : 'GLOBAL',
+                method: this.getDetectionMethod(),
+                networkTest: this.networkTestResult,
+                proxyConfigured: this.hasProxyConfigured()
+            },
             cache: cacheStatus
         };
+    }
+
+    /**
+     * 获取检测说明
+     * @returns {string}
+     */
+    getDetectionMethod() {
+        if (process.env.FORCE_REGION) return 'FORCE_REGION env';
+        if (process.env.SKIP_CN_DETECTION === 'true') return 'SKIP_CN_DETECTION';
+        if (this.hasProxyConfigured()) return 'Proxy detected';
+        if (process.env.REGION) return 'REGION env';
+        if (this.networkTestResult) return 'Network test';
+        return 'Auto-detection';
     }
 }
 

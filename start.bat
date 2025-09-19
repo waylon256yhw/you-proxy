@@ -20,7 +20,7 @@ set ACTIVE_PROVIDER=you
 REM ÉèÖÃÖ¸¶¨ä¯ÀÀÆ÷,¿ÉÒÔÊÇ 'chromium', 'chrome', 'edge' »ò 'auto'
 set BROWSER_TYPE=auto
 
-REM ÉèÖÃÊÇ·ñ×Ô¶¯ÏÂÔØChromium
+REM ÉèÖÃÊÇ·ñ×Ô¶¯ÏÂÔØchromium
 set AUTO_DOWNLOAD_CHROMIUM=false
 
 REM ÉèÖÃÊÇ·ñÆôÓÃÊÖ¶¯µÇÂ¼
@@ -54,7 +54,7 @@ set FORCE_MULTI_SESSION_MODE=true
 REM ¶ÁÈ¡config.mjs, cookieÄ£Ê½Ê¹ÓÃËæ»úUUID
 set FORCE_REGEN_UUID=true
 REM ÉèÖÃÇ¿ÖÆ¹Ì¶¨µÚÒ»¾ä»°
-set FORCE_FILE_UPLOAD_QUERY=false
+set FORCE_FILE_UPLOAD_QUERY=true
 REM ÊÇ·ñÆôÓÃÒþÉíÄ£Ê½
 set INCOGNITO_MODE=true
 REM ---------------------------------------------------
@@ -71,11 +71,42 @@ set ENABLE_GARBLED_END=false
 REM ---------------------------------------------------
 REM -----·ÀÌØÕ÷½áÊø-----
 
+REM ========== YouChat ¹¦ÄÜÅäÖÃ ==========
+REM ÆôÓÃ¹¤×÷Á÷Éú³ÉÓÃ»§ÌåÑé - ÔÊÐíAI×Ô¶¯Éú³ÉºÍ½¨ÒéÈÎÎñÖ´ÐÐÁ÷³Ì
+REM true: ÆôÓÃ¹¤×÷Á÷Éú³É£¬½«¸´ÔÓÈÎÎñ·Ö½âÎª¶à¸ö²½Öè
+REM false: ½ûÓÃ¹¤×÷Á÷Éú³É£¬Ê¹ÓÃ´«Í³ÎÊ´ðÄ£Ê½ (²»»áÊä³öthink, ºÍ`ENABLE_THINKING_CHAIN`ÀàËÆ)
+set ENABLE_WORKFLOW_GENERATION_UX=true
+REM ÉèÖÃ¿ªÆô<think>ÄÚÖÃË¼¿¼´«Êä
+set ENABLE_THINKING_CHAIN=true
+REM ÆôÓÃ¸öÐÔ»¯ÌáÈ¡ - ´ÓÓÃ»§ÀúÊ·¶Ô»°ÖÐÑ§Ï°Æ«ºÃºÍÏ°¹ß
+REM true: ¸ù¾ÝÓÃ»§»­Ïñ¸öÐÔ»¯»Ø´ðÄÚÈÝºÍ·ç¸ñ
+REM false: Ê¹ÓÃ±ê×¼»¯»Ø´ð£¬²»½øÐÐ¸öÐÔ»¯´¦Àí
+set USE_PERSONALIZATION_EXTRACTION=false
+REM ÆôÓÃ¿É±à¼­¹¤×÷Á÷ - ÔÊÐíÓÃ»§ÐÞ¸ÄAIÉú³ÉµÄ¹¤×÷Á÷²½Öè
+REM true: ÓÃ»§¿ÉÒÔ±à¼­¡¢Ìí¼Ó¡¢É¾³ý¹¤×÷Á÷½Úµã
+REM false: ¹¤×÷Á÷Ö»¶Á£¬ÓÃ»§ÎÞ·¨ÐÞ¸Ä
+set ENABLE_EDITABLE_WORKFLOW=true
+REM Ê¹ÓÃÇ¶Ì×Ê½ÁÄÌì¸üÐÂ - ¿ØÖÆÁÄÌìÏûÏ¢µÄÏÔÊ¾ºÍ×éÖ¯·½Ê½
+REM true: Ê¹ÓÃÇ¶Ì×½á¹¹ÏÔÊ¾ÏûÏ¢£¨Ê÷×´½á¹¹£©
+REM false: Ê¹ÓÃÆ½ÆÌÊ½ÏûÏ¢ÏÔÊ¾£¨ÏßÐÔ½á¹¹£©
+set USE_NESTED_YOUCHAT_UPDATES=false
+REM ÆôÓÃÖÇÄÜÌå³ÎÇåÎÊÌâ - AIÖ÷¶¯Ñ¯ÎÊÄ£ºýÎÊÌâµÄÏêÏ¸ÐÅÏ¢
+REM true: µ±ÎÊÌâ²»Ã÷È·Ê±£¬AI»áÖ÷¶¯Ìá³ö³ÎÇåÎÊÌâ
+REM false: AIÖ±½Ó»ùÓÚÏÖÓÐÐÅÏ¢»Ø´ð£¬²»Ö÷¶¯³ÎÇå
+set ENABLE_AGENT_CLARIFICATION_QUESTIONS=false
+REM ========== YouChat ¹¦ÄÜÅäÖÃ½áÊø ==========
+REM ========== ÇëÇóÌå½á¹¹µ÷ÊÔ(¼ì²éÆäËûÆ½Ì¨ÇëÇóÌå½á¹¹) ==========
+REM ÊÇ·ñÆôÓÃÇëÇóÌå½á¹¹µ÷ÊÔ
+set DEBUG_REQUESTS=false
+REM ÊÇ·ñÏÔÊ¾ÍêÕûÄÚÈÝ
+set DEBUG_VERBOSE=false
+REM ========== ÇëÇóÌå½á¹¹µ÷ÊÔ½áÊø ==========
+
 REM -----ÄÚ´æ×Ô¶¯ÇåÀí¼à¿ØÅäÖÃ-----
 REM ¼ì²é¼ä¸ôÊ±¼ä(µ¥Î»: ·ÖÖÓ)
 set MEMORY_CHECK_INTERVAL=60
 REM ÄÚ´æÇåÀíãÐÖµ, ¸ù¾ÝÉèÖÃ²¢·¢ÊÊµ±µ÷Õû(µ¥Î»: MB)
-set HEAP_WARNING_THRESHOLD=1024
+set HEAP_WARNING_THRESHOLD=8192
 REM ÉèÖÃ´ïµ½Ö¸¶¨ÄÚ´æãÐÖµ×Ô¶¯ÇåÀí
 set AUTO_GC_ON_HIGH_MEMORY=false
 
@@ -91,10 +122,7 @@ REM ÉèÖÃ×Ô¶¯»ñÈ¡Ä£ÐÍÁÐ±í¹þÏ£Öµ
 REM »ñÈ¡·½·¨: you.comÒ³Ãæ, °´f12£¬ÇÐ»»'ÍøÂç(network)', ÈÎÒâÑ¡ÔñÒ»¸öÄ£ÐÍ·¢ËÍÇëÇó£¬ÔÚµÚ4ÁÐ(ÎÄ¼þ file)
 REM ÕÒµ½ÀàËÆ: `_next/data/`¿ªÍ·: `_next/data/0eae4547518d0f954439be9efdaae87c915b8921/en-US/search.json?q...`ÍøÖ· (¿ÉÒÔÓÃËÑË÷É¸Ñ¡)
 REM ½«`0eae4547518d0f954439be9efdaae87c915b8921`ÌîÈë`YOU_BUILD_HASH`£¬×¢Òâ²»ÒªÓÐ¿Õ¸ñ¡£
-set YOU_BUILD_HASH=3cfa46d
-
-REM ÉèÖÃ¿ªÆô<think>ÄÚÖÃË¼¿¼´«Êä
-set ENABLE_THINKING_CHAIN=true
+set YOU_BUILD_HASH=
 
 REM ÉèÖÃ»á»°×Ô¶¯ÊÍ·ÅÊ±¼ä(µ¥Î»:Ãë) (0=½ûÓÃ×Ô¶¯ÊÍ·Å)
 set SESSION_LOCK_TIMEOUT=180
@@ -129,7 +157,7 @@ set TUNNEL_TYPE=ngrok
 REM ÉèÖÃlocaltunnel×ÓÓòÃû(Áô¿ÕÔòÎªËæ»úÓòÃû)
 set SUBDOMAIN=
 
-REM ÉèÖÃ ngrok AUTH TOKEN
+REM ========== ÉèÖÃ ngrok AUTH TOKEN ==========
 REM ÕâÊÇ ngrok ÕË»§µÄÉí·ÝÑéÖ¤ÁîÅÆ¡£¿ÉÒÔÔÚ ngrok ÒÇ±í°åµÄ "Auth" ²¿·ÖÕÒµ½Ëü¡£
 REM Ãâ·ÑÕË»§ºÍ¸¶·ÑÕË»§¶¼ÐèÒªÉèÖÃ´ËÏî¡£
 REM ngrokÍøÕ¾: https://dashboard.ngrok.com
@@ -141,11 +169,26 @@ REM ×¢Òâ£º´Ë¹¦ÄÜ½öÊÊÓÃÓÚ ngrok ¸¶·ÑÕË»§¡£
 REM Ê¹ÓÃ´Ë¹¦ÄÜÇ°£¬ÇëÈ·±£ÒÑÔÚ ngrok ÒÇ±í°åÖÐÌí¼Ó²¢ÑéÖ¤ÁË¸ÃÓòÃû¡£
 REM ¸ñÊ½Ê¾Àý£ºyour-custom-domain.com
 REM Èç¹ûÊ¹ÓÃÃâ·ÑÕË»§»ò²»ÏëÊ¹ÓÃ×Ô¶¨ÒåÓòÃû£¬Çë½«´ËÏîÁô¿Õ¡£
+REM ÉèÖÃ ngrok ×Ô¶¨ÒåÓòÃû
 set NGROK_CUSTOM_DOMAIN=
+REM ÉèÖÃ ngrok ×ÓÓòÃû
 set NGROK_SUBDOMAIN=
+REM ÇøÓòÑ¡Ôñ: us (ÃÀ¹ú), eu (Å·ÖÞ), ap (ÑÇÌ«), au (°Ä´óÀûÑÇ), sa (ÄÏÃÀ), jp (ÈÕ±¾), in (Ó¡¶È)
+set NGROK_REGION=jp
+REM ÆôÓÃ½¡¿µ¼à¿Ø
+set NGROK_HEALTH_CHECK=false
+REM ½¡¿µ¼ì²é¼ä¸ô(ºÁÃë)
+set NGROK_HEALTH_INTERVAL=60000
+REM ×î´óÖØÊÔ´ÎÊý
+set NGROK_MAX_RETRIES=2
+REM ¹ÜÀí½çÃæµØÖ·
+set NGROK_WEB_ADDR=127.0.0.1:4040
+REM Ç¿ÖÆTLS
+set NGROK_BIND_TLS=true
+REM ========== ÉèÖÃ ngrok AUTH TOKEN ½áÊø ==========
 
 REM ÉèÖÃ PASSWORD APIÃÜÂë
-set PASSWORD=12345678
+set PASSWORD=
 
 REM ÉèÖÃ PORT ¶Ë¿Ú
 set PORT=8080
@@ -154,15 +197,15 @@ REM ÉèÖÃAIÄ£ÐÍ(ClaudeÏµÁÐÄ£ÐÍÖ±½ÓÔÚ¾Æ¹ÝÖÐÑ¡Ôñ¼´¿ÉÊ¹ÓÃ£¬ÐÞ¸Ä`AI_MODEL`»·¾³±äÁ¿¿ÉÒ
 set AI_MODEL=
 
 REM ×Ô¶¨Òå»á»°Ä£Ê½
-set USE_CUSTOM_MODE=true
+set USE_CUSTOM_MODE=false
 
 REM ÆôÓÃÄ£Ê½ÂÖ»»
 REM Ö»ÓÐµ± USE_CUSTOM_MODE ºÍ ENABLE_MODE_ROTATION ¶¼ÉèÖÃÎª true Ê±£¬²Å»áÆôÓÃÄ£Ê½ÂÖ»»¹¦ÄÜ¡£
 REM ¿ÉÒÔÔÚ×Ô¶¨ÒåÄ£Ê½ºÍÄ¬ÈÏÄ£Ê½Ö®¼ä¶¯Ì¬ÇÐ»»
-set ENABLE_MODE_ROTATION=true
+set ENABLE_MODE_ROTATION=false
 
 REM ÉèÖÃÎ±ÔìÕærole (Èç¹ûÆôÓÃ£¬±ØÐëÊ¹ÓÃtxt¸ñÊ½ÉÏ´«)
-set USE_BACKSPACE_PREFIX=true
+set USE_BACKSPACE_PREFIX=false
 
 REM ÉèÖÃÉÏ´«ÎÄ¼þ¸ñÊ½ docx | txt | json
 set UPLOAD_FILE_FORMAT=txt
@@ -171,7 +214,7 @@ REM ÉèÖÃÊÇ·ñÆôÓÃ CLEWD ºó´¦Àí
 set CLEWD_ENABLED=false
 
 REM ÔËÐÐ Node.js Ó¦ÓÃ³ÌÐò
-node --expose-gc index.mjs
+call node --expose-gc index.mjs
 
 REM ÔÝÍ£½Å±¾Ö´ÐÐ,µÈ´ýÓÃ»§°´ÈÎÒâ¼üÍË³ö
 pause

@@ -1,8 +1,8 @@
+import http from 'http';
 import express from "express";
 import {createEvent, getGitRevision} from "./utils/cookieUtils.mjs";
+import { setupTunnelFromEnv } from './utils/tunnelUtils.mjs';
 import YouProvider from "./provider.mjs";
-import localtunnel from "localtunnel";
-import ngrok from 'ngrok';
 import {v4 as uuidv4} from "uuid";
 import './proxyAgent.mjs';
 import {storeImage} from './imageStorage.mjs';
@@ -13,12 +13,22 @@ import RequestLogger from './requestLogger.mjs';
 import tlsRotator from './utils/tlsRotator.mjs';
 import {fetchWithRetry} from './utils/httpClient.mjs';
 import modelManager from './modelManager.mjs';
+import cookieManagerRouter, { cookieManagerAuth } from './cookie-manager/index.mjs'; // cookie管理器
+import { initializeOutputCapture } from './cookie-manager/terminal-api.mjs';
+import { debugPrintRequest } from './utils/debugUtils.mjs';
+import { fileURLToPath } from 'url';
 
+// 初始化终端输出捕获
+initializeOutputCapture();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const app = express();
 const port = process.env.PORT || 8080;
 const validApiKey = process.env.PASSWORD;
-
 const modelMappping = {
+    "claude-opus-4-1": "claude_4_1_opus_thinking",
+    "claude-opus-4-1-20250805": "claude_4_1_opus",
     "claude-opus-4-0": "claude_4_opus_thinking",
     "claude-opus-4-20250514": "claude_4_opus",
     "claude-sonnet-4-0": "claude_4_sonnet_thinking",
@@ -93,167 +103,186 @@ app.get("/v1/models", OpenAIApiKeyAuth, (req, res) => {
     });
     res.json({object: "list", data: models});
 });
-// handle openai format model request
-app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
-    // 用于存储请求体
+
+/**
+ * 处理请求体接收
+ * @param {object} req - Express请求
+ * @param {object} res - Express响应
+ * @param {function} callback - 回调
+ */
+function handleRequestBody(req, res, callback) {
     req.rawBody = "";
     req.setEncoding("utf8");
-    clientState.setClosed(false);
 
-    // 接收数据
+    req.requestState = createRequestState();
+
     req.on("data", function (chunk) {
         req.rawBody += chunk;
     });
 
-    req.on("end", async () => {
+    req.on("end", callback);
+}
+
+/**
+ * 聊天完成请求通用流程
+ * @param {object} req - Express请求
+ * @param {object} res - Express响应
+ * @param {object} config - 配置
+ * @param {string} config.apiType - API类型 ('openai' 或 'anthropic')
+ * @param {object} config.jsonBody - 解析后请求体
+ * @param {string} config.proxyModel - 模型
+ * @param {object} config.eventHandlers - 事件处理
+ */
+async function handleChatCompletion(req, res, config) {
+    const { apiType, jsonBody, proxyModel, eventHandlers } = config;
+
+    // 检查模型可用性
+    const availableModels = modelManager.getAvailableModels();
+    if (proxyModel && !availableModels.includes(proxyModel)) {
+        res.json({error: {code: 404, message: "Invalid Model"}});
+        return;
+    }
+
+    console.log(`Using model ${proxyModel}`);
+
+    // 设置请求级别会话管理器
+    const requestSessionManager = setupSession(res, req.requestState);
+
+    try {
+        // 获取客户端信息和会话
+        const {selectedUsername, modeSwitched, browserInstance, clientIpAddress} =
+            await getClientAndSessionInfo(req, proxyModel);
+
+        // 设置会话信息
+        requestSessionManager.setSession(selectedUsername, browserInstance.id);
+
+        const {completion, cancel} = await provider.getCompletion({
+            username: selectedUsername,
+            messages: jsonBody.messages,
+            browserInstance: browserInstance,
+            stream: !!jsonBody.stream,
+            proxyModel: proxyModel,
+            useCustomMode: process.env.USE_CUSTOM_MODE === "true",
+            modeSwitched: modeSwitched,
+            clientIp: clientIpAddress,
+            requestState: req.requestState  // 请求状态
+        });
+
+        // 设置完成对象
+        requestSessionManager.setCompletion(completion, cancel);
+
+        // 设置事件监听器
+        completion.on("start", (id) => eventHandlers.onStart(id, res, jsonBody, proxyModel));
+        completion.on("completion", (id, text) => eventHandlers.onCompletion(id, text, res, jsonBody, proxyModel, requestSessionManager));
+        completion.on("end", () => eventHandlers.onEnd(res, jsonBody, requestSessionManager));
+        completion.on("error", (err) => eventHandlers.onError(err, res, jsonBody, requestSessionManager, apiType));
+
+    } catch (error) {
+        handleErrorResponse(res, error, jsonBody, jsonBody.stream, apiType);
+        requestSessionManager.releaseSession();
+    }
+}
+
+// handle openai format model request
+app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
+    handleRequestBody(req, res, async () => {
         const jsonBody = parseRequestBody(req, res, 'openai');
         if (!jsonBody) return;
 
-        // 规范化消息
-        jsonBody.messages = await openaiNormalizeMessages(jsonBody.messages);
+        // 调试打印（仅在启用时）
+        debugPrintRequest(req, jsonBody, 'openai');
 
+        // OpenAI消息处理
+        jsonBody.messages = await openaiNormalizeMessages(jsonBody.messages);
         console.log("message length: " + jsonBody.messages.length);
 
-        // 尝试映射模型
+        // 模型映射
         if (jsonBody.model && modelMappping[jsonBody.model]) {
             jsonBody.model = modelMappping[jsonBody.model];
         }
 
-        const availableModels = modelManager.getAvailableModels();
-        if (jsonBody.model && !availableModels.includes(jsonBody.model)) {
-            res.json({error: {code: 404, message: "Invalid Model"}});
-            return;
-        }
-        console.log("Using model " + jsonBody.model);
-
-        // 设置会话管理
-        const sessionManager = setupSession(res);
-
-        try {
-            // 获取客户端信息和会话
-            const {selectedUsername, modeSwitched, browserInstance} =
-                await getClientAndSessionInfo(req, jsonBody.model);
-
-            // 设置会话信息
-            sessionManager.setSession(selectedUsername, browserInstance.id);
-
-            const {completion, cancel} = await provider.getCompletion({
-                username: selectedUsername,
-                messages: jsonBody.messages,
-                browserInstance: browserInstance,
-                stream: !!jsonBody.stream,
-                proxyModel: jsonBody.model,
-                useCustomMode: process.env.USE_CUSTOM_MODE === "true",
-                modeSwitched: modeSwitched
-            });
-
-            // 设置完成对象
-            sessionManager.setCompletion(completion, cancel);
-
-            // 监听开始事件
-            completion.on("start", (id) => {
+        // OpenAI事件处理
+        const eventHandlers = {
+            onStart: (id, res, jsonBody, proxyModel) => {
                 if (jsonBody.stream) {
-                    // 发送消息开始
                     res.write(createEvent(":", "queue heartbeat 114514"));
-                    res.write(
-                        createEvent("data", {
-                            id: id,
-                            object: "chat.completion.chunk",
-                            created: Math.floor(new Date().getTime() / 1000),
-                            model: jsonBody.model,
-                            system_fingerprint: "114514",
-                            choices: [{
-                                index: 0,
-                                delta: {role: "assistant", content: ""},
-                                logprobs: null,
-                                finish_reason: null
-                            }],
-                        })
-                    );
+                    res.write(createEvent("data", {
+                        id: id,
+                        object: "chat.completion.chunk",
+                        created: Math.floor(new Date().getTime() / 1000),
+                        model: proxyModel,
+                        system_fingerprint: "114514",
+                        choices: [{
+                            index: 0,
+                            delta: {role: "assistant", content: ""},
+                            logprobs: null,
+                            finish_reason: null
+                        }],
+                    }));
                 }
-            });
-
-            // 监听完成事件
-            completion.on("completion", (id, text) => {
+            },
+            onCompletion: (id, text, res, jsonBody, proxyModel, requestSessionManager) => {
                 if (jsonBody.stream) {
-                    // 发送消息增量
-                    res.write(
-                        createEvent("data", {
-                            choices: [
-                                {
-                                    content_filter_results: {
-                                        hate: {filtered: false, severity: "safe"},
-                                        self_harm: {filtered: false, severity: "safe"},
-                                        sexual: {filtered: false, severity: "safe"},
-                                        violence: {filtered: false, severity: "safe"},
-                                    },
-                                    delta: {content: text},
-                                    finish_reason: null,
-                                    index: 0,
-                                },
-                            ],
-                            created: Math.floor(new Date().getTime() / 1000),
-                            id: id,
-                            model: jsonBody.model,
-                            object: "chat.completion.chunk",
-                            system_fingerprint: "114514",
-                        })
-                    );
-                } else {
-                    // 只发送一次，发送最终响应
-                    res.write(
-                        JSON.stringify({
-                            id: id,
-                            object: "chat.completion",
-                            created: Math.floor(new Date().getTime() / 1000),
-                            model: jsonBody.model,
-                            system_fingerprint: "114514",
-                            choices: [
-                                {
-                                    index: 0,
-                                    message: {
-                                        role: "assistant",
-                                        content: text,
-                                    },
-                                    logprobs: null,
-                                    finish_reason: "stop",
-                                },
-                            ],
-                            usage: {
-                                prompt_tokens: 1,
-                                completion_tokens: 1,
-                                total_tokens: 1,
+                    res.write(createEvent("data", {
+                        choices: [{
+                            content_filter_results: {
+                                hate: {filtered: false, severity: "safe"},
+                                self_harm: {filtered: false, severity: "safe"},
+                                sexual: {filtered: false, severity: "safe"},
+                                violence: {filtered: false, severity: "safe"},
                             },
-                        })
-                    );
+                            delta: {content: text},
+                            finish_reason: null,
+                            index: 0,
+                        }],
+                        created: Math.floor(new Date().getTime() / 1000),
+                        id: id,
+                        model: proxyModel,
+                        object: "chat.completion.chunk",
+                        system_fingerprint: "114514",
+                    }));
+                } else {
+                    res.write(JSON.stringify({
+                        id: id,
+                        object: "chat.completion",
+                        created: Math.floor(new Date().getTime() / 1000),
+                        model: proxyModel,
+                        system_fingerprint: "114514",
+                        choices: [{
+                            index: 0,
+                            message: {role: "assistant", content: text},
+                            logprobs: null,
+                            finish_reason: "stop",
+                        }],
+                        usage: {prompt_tokens: 1, completion_tokens: 1, total_tokens: 1},
+                    }));
                     res.end();
-                    sessionManager.releaseSession();
+                    requestSessionManager.releaseSession();
                 }
-            });
-
-            // 监听结束事件
-            completion.on("end", () => {
+            },
+            onEnd: (res, jsonBody, requestSessionManager) => {
                 if (jsonBody.stream) {
                     res.write(createEvent("data", "[DONE]"));
                     res.end();
                 }
-                sessionManager.releaseSession();
-            });
-
-            // 监听错误事件
-            completion.on("error", (err) => {
+                requestSessionManager.releaseSession();
+            },
+            onError: (err, res, jsonBody, requestSessionManager, apiType) => {
                 console.error("Completion error:", err);
                 const errorMessage = "Error occurred: " + (err.message || "Unknown error");
                 if (!res.headersSent) {
                     sendOpenAIErrorResponse(res, errorMessage, jsonBody, jsonBody.stream);
                 }
-                sessionManager.releaseSession();
-            });
+                requestSessionManager.releaseSession();
+            }
+        };
 
-        } catch (error) {
-            handleErrorResponse(res, error, jsonBody, jsonBody.stream, "openai");
-            sessionManager.releaseSession();
-        }
+        await handleChatCompletion(req, res, {
+            apiType: 'openai',
+            jsonBody: jsonBody,
+            proxyModel: jsonBody.model,
+            eventHandlers: eventHandlers
+        });
     });
 });
 
@@ -322,7 +351,7 @@ async function getMediaTypeFromUrl(url) {
         const contentType = response.headers.get('content-type');
         return contentType || guessMediaTypeFromUrl(url);
     } catch (error) {
-        console.warn('无法获取媒体类型，尝试根据 URL 推断', error);
+        console.warn('Unable to retrieve media type, attempting to infer based on URL.', error);
         return guessMediaTypeFromUrl(url);
     }
 }
@@ -365,17 +394,12 @@ async function fetchImageAsBase64(url) {
 
 // handle anthropic format model request
 app.post("/v1/messages", AnthropicApiKeyAuth, (req, res) => {
-    req.rawBody = "";
-    req.setEncoding("utf8");
-    clientState.setClosed(false);
-
-    req.on("data", function (chunk) {
-        req.rawBody += chunk;
-    });
-
-    req.on("end", async () => {
+    handleRequestBody(req, res, async () => {
         const jsonBody = parseRequestBody(req, res, 'anthropic');
         if (!jsonBody) return;
+
+        // 调试打印（仅在启用时）
+        debugPrintRequest(req, jsonBody, 'anthropic');
 
         // 处理messages格式
         jsonBody.messages = anthropicNormalizeMessages(jsonBody.messages || []);
@@ -401,6 +425,7 @@ app.post("/v1/messages", AnthropicApiKeyAuth, (req, res) => {
 
         console.log("message length:", jsonBody.messages.length);
 
+        // 确定使用模型
         let proxyModel;
         if (process.env.AI_MODEL) {
             proxyModel = process.env.AI_MODEL;
@@ -411,40 +436,10 @@ app.post("/v1/messages", AnthropicApiKeyAuth, (req, res) => {
         } else {
             proxyModel = "claude_3_opus";
         }
-        console.log(`Using model ${proxyModel}`);
 
-        const availableModels = modelManager.getAvailableModels();
-        if (proxyModel && !availableModels.includes(proxyModel)) {
-            res.json({error: {code: 404, message: "Invalid Model"}});
-            return;
-        }
-
-        // 设置会话管理
-        const sessionManager = setupSession(res);
-
-        try {
-            // 获取客户端信息和会话
-            const {selectedUsername, modeSwitched, browserInstance} =
-                await getClientAndSessionInfo(req, jsonBody.model || proxyModel);
-
-            // 设置会话信息
-            sessionManager.setSession(selectedUsername, browserInstance.id);
-
-            const {completion, cancel} = await provider.getCompletion({
-                username: selectedUsername,
-                messages: jsonBody.messages,
-                browserInstance: browserInstance,
-                stream: !!jsonBody.stream,
-                proxyModel: proxyModel,
-                useCustomMode: process.env.USE_CUSTOM_MODE === "true",
-                modeSwitched: modeSwitched
-            });
-
-            // 设置完成对象
-            sessionManager.setCompletion(completion, cancel);
-
-            // 监听开始事件
-            completion.on("start", (id) => {
+        // Anthropic事件处理
+        const eventHandlers = {
+            onStart: (id, res, jsonBody, proxyModel) => {
                 if (jsonBody.stream) {
                     // send message start
                     res.write(createEvent("message_start", {
@@ -467,10 +462,8 @@ app.post("/v1/messages", AnthropicApiKeyAuth, (req, res) => {
                     }));
                     res.write(createEvent("ping", {type: "ping"}));
                 }
-            });
-
-            // 监听完成事件
-            completion.on("completion", (id, text) => {
+            },
+            onCompletion: (id, text, res, jsonBody, proxyModel, requestSessionManager) => {
                 if (jsonBody.stream) {
                     // send message delta
                     res.write(createEvent("content_block_delta", {
@@ -492,12 +485,10 @@ app.post("/v1/messages", AnthropicApiKeyAuth, (req, res) => {
                         usage: {input_tokens: 0, output_tokens: 0},
                     }));
                     res.end();
-                    sessionManager.releaseSession();
+                    requestSessionManager.releaseSession();
                 }
-            });
-
-            // 监听结束事件
-            completion.on("end", () => {
+            },
+            onEnd: (res, jsonBody, requestSessionManager) => {
                 if (jsonBody.stream) {
                     res.write(createEvent("content_block_stop", {type: "content_block_stop", index: 0}));
                     res.write(createEvent("message_delta", {
@@ -508,24 +499,23 @@ app.post("/v1/messages", AnthropicApiKeyAuth, (req, res) => {
                     res.write(createEvent("message_stop", {type: "message_stop"}));
                     res.end();
                 }
-                sessionManager.releaseSession();
-            });
-
-            // 监听错误事件
-            completion.on("error", (err) => {
+                requestSessionManager.releaseSession();
+            },
+            onError: (err, res, jsonBody, requestSessionManager, apiType) => {
                 console.error("Completion error:", err);
-                // 向客户端返回错误信息
                 const errorMessage = "Error occurred: " + (err.message || "Unknown error");
                 if (!res.headersSent) {
                     sendAnthropicErrorResponse(res, errorMessage, jsonBody, jsonBody.stream);
                 }
-                sessionManager.releaseSession();
-            });
-
-        } catch (error) {
-            handleErrorResponse(res, error, jsonBody, jsonBody.stream, "anthropic");
-            sessionManager.releaseSession();
-        }
+                requestSessionManager.releaseSession();
+            }
+        };
+        await handleChatCompletion(req, res, {
+            apiType: 'anthropic',
+            jsonBody: jsonBody,
+            proxyModel: proxyModel,
+            eventHandlers: eventHandlers
+        });
     });
 });
 
@@ -636,11 +626,11 @@ function processImageContent(contentArray) {
 }
 
 /**
- * 会话管理和释放
- * @param {object} res - Express响应对象
- * @returns {object} 会话管理
+ * 设置请求级别的会话管理和释放机制
+ * @param {object} res - Express响应
+ * @returns {object} 请求级别的会话管理器
  */
-function setupSession(res) {
+function setupSession(res, requestState) {
     let selectedSession = null;
     let selectedBrowserId = null;
     let releaseSessionCalled = false;
@@ -672,8 +662,8 @@ function setupSession(res) {
     // 监听客户端关闭事件
     res.on("close", () => {
         const sessionId = getSession();
-        console.log(` > [Client closed]`);
-        clientState.setClosed(true);
+        console.log(` > [Client closed] Request: ${requestState.getRequestId()}`);
+        requestState.setClosed(true);  // 只设置当前请求
         try {
             if (completion) {
                 completion.removeAllListeners();
@@ -707,13 +697,14 @@ function setupSession(res) {
         releaseSession,
         getSession,
         getSessionDuration,
-        isReleased // 用于外部状态检查
+        isReleased,
+        getRequestState: () => requestState
     };
 }
 
 /**
  * 获取客户端信息分配会话
- * @param {object} req - Express请求对象
+ * @param {object} req - Express请求
  * @param {string} model - 模型名称
  * @returns {Promise<object>} 包含会话信息对象
  */
@@ -745,13 +736,14 @@ async function getClientAndSessionInfo(req, model) {
     return {
         selectedUsername,
         modeSwitched,
-        browserInstance
+        browserInstance,
+        clientIpAddress
     };
 }
 
 /**
  * 处理错误响应
- * @param {object} res - Express响应对象
+ * @param {object} res - Express响应
  * @param {Error} error - 错误对象
  * @param {object} jsonBody - 请求体JSON
  * @param {boolean} isStream - 是否流式
@@ -772,7 +764,7 @@ function handleErrorResponse(res, error, jsonBody, isStream, apiType) {
 
 /**
  * OpenAI格式的错误响应
- * @param {object} res - Express响应对象
+ * @param {object} res - Express响应
  * @param {string} errorMessage - 错误信息
  * @param {object} jsonBody - 请求体JSON
  * @param {boolean} isStream - 是否流式
@@ -834,7 +826,7 @@ function sendOpenAIErrorResponse(res, errorMessage, jsonBody, isStream) {
 
 /**
  * Anthropic格式错误响应
- * @param {object} res - Express响应对象
+ * @param {object} res - Express响应
  * @param {string} errorMessage - 错误信息
  * @param {object} jsonBody - 请求体JSON
  * @param {boolean} isStream - 是否流式
@@ -861,8 +853,8 @@ function sendAnthropicErrorResponse(res, errorMessage, jsonBody, isStream) {
 
 /**
  * 解析和验证请求体
- * @param {object} req - Express请求对象
- * @param {object} res - Express响应对象
+ * @param {object} req - Express请求
+ * @param {object} res - Express响应
  * @param {string} apiType - API类型（'openai'或'anthropic'）
  * @returns {object|null} - 解析后JSON对象，出错返回null
  */
@@ -885,7 +877,7 @@ function parseRequestBody(req, res, apiType) {
         // 尝试解析JSON
         return JSON.parse(req.rawBody);
     } catch (error) {
-        // 记录解析错误
+        // recordParsingError
         logJsonParseError(req, error, apiType);
 
         // Send error response
@@ -896,7 +888,7 @@ function parseRequestBody(req, res, apiType) {
 
 /**
  * 记录请求错误
- * @param {object} req - Express请求对象
+ * @param {object} req - Express请求
  * @param {string} message - 错误消息
  */
 function logRequestError(req, message) {
@@ -913,8 +905,8 @@ function logRequestError(req, message) {
 
 /**
  * 记录JSON解析错误
- * @param {object} req - Express请求对象
- * @param {Error} error - 错误对象
+ * @param {object} req - Express请求
+ * @param {Error} error
  * @param {string} apiType - API类型
  */
 function logJsonParseError(req, error, apiType) {
@@ -935,7 +927,7 @@ function logJsonParseError(req, error, apiType) {
 
 /**
  * 发送格式化错误响应
- * @param {object} res - Express响应对象
+ * @param {object} res - Express响应
  * @param {number} statusCode - HTTP状态码
  * @param {string} message - 错误消息
  * @param {string} apiType - API类型
@@ -963,6 +955,9 @@ function sendErrorResponse(res, statusCode, message, apiType) {
     res.status(statusCode).json(errorResponse);
 }
 
+// Cookie 管理器路由
+app.use('/cookie-manager', cookieManagerRouter);
+
 // handle other
 app.use((req, res, next) => {
     const {revision, branch} = getGitRevision();
@@ -970,72 +965,12 @@ app.use((req, res, next) => {
     console.log("收到了错误路径的请求，请检查您使用的API端点是否正确。")
 });
 
-const createLocaltunnel = async (port, subdomain) => {
-    const tunnelOptions = {port};
-    if (subdomain) {
-        tunnelOptions.subdomain = subdomain;
-    }
+const server = http.createServer(app);
 
-    try {
-        const tunnel = await localtunnel(tunnelOptions);
-        console.log(`隧道已成功创建，可通过以下URL访问: ${tunnel.url}/v1`);
-        tunnel.on("close", () => console.log("已关闭隧道"));
-        return tunnel;
-    } catch (error) {
-        console.error("创建localtunnel隧道失败:", error);
-    }
-};
-
-/*
-    * 创建ngrok隧道
-    * @param {number} port - 本地端口
-    * @param {string} authToken - ngrok的认证token
-    * @param {string} customDomain - 自定义域名
-    * @param {string} subdomain - 子域名
- */
-const createNgrok = async (port, authToken, customDomain, subdomain) => {
-    const ngrokOptions = {addr: port, authtoken: authToken};
-
-    if (customDomain) {
-        ngrokOptions.hostname = customDomain;
-    } else if (subdomain) {
-        ngrokOptions.subdomain = subdomain;
-    }
-
-    const originalHttpProxy = process.env.HTTP_PROXY;
-    const originalHttpsProxy = process.env.HTTPS_PROXY;
-    delete process.env.HTTP_PROXY;
-    delete process.env.HTTPS_PROXY;
-
-    try {
-        const url = await ngrok.connect(ngrokOptions);
-        console.log(`隧道已成功创建，可通过以下URL访问: ${url}/v1`);
-        process.on('SIGTERM', async () => {
-            await ngrok.kill();
-            console.log("已关闭隧道");
-        });
-        return url;
-    } catch (error) {
-        console.error("创建ngrok隧道失败:", error);
-    } finally {
-        if (originalHttpProxy) process.env.HTTP_PROXY = originalHttpProxy;
-        if (originalHttpsProxy) process.env.HTTPS_PROXY = originalHttpsProxy;
-    }
-};
-
-const createTunnel = async (tunnelType, port) => {
-    console.log(`创建${tunnelType}隧道中...`);
-    if (tunnelType === "localtunnel") {
-        return createLocaltunnel(port, process.env.SUBDOMAIN);
-    } else if (tunnelType === "ngrok") {
-        return createNgrok(port, process.env.NGROK_AUTH_TOKEN, process.env.NGROK_CUSTOM_DOMAIN, process.env.NGROK_SUBDOMAIN);
-    }
-};
-
-app.listen(port, async () => {
+server.listen(port, async () => {
     // 输出当前月份的请求统计信息
     provider.getLogger().printStatistics();
-    console.log(`YouChat proxy listening on port ${port}`);
+    console.log(`YouChat proxy listening on port ${port} | http://127.0.0.1:${port}/v1`);
     // 启动TLS轮换服务
     tlsRotator.start();
     // 模型列表自动更新
@@ -1046,11 +981,29 @@ app.listen(port, async () => {
     }
     console.log(`Custom mode: ${process.env.USE_CUSTOM_MODE === "true" ? "enabled" : "disabled"}`);
     console.log(`Mode rotation: ${process.env.ENABLE_MODE_ROTATION === "true" ? "enabled" : "disabled"}`);
-
-    if (process.env.ENABLE_TUNNEL === "true") {
-        const tunnelType = process.env.TUNNEL_TYPE || "localtunnel";
-        await createTunnel(tunnelType, port);
+    if (cookieManagerAuth && cookieManagerAuth.value) {
+        if (cookieManagerAuth.value.isFirstTime) {
+            console.log('\n========================================');
+            console.log('🍪 Cookie Manager 访问信息');
+            console.log(`访问地址: http://127.0.0.1:${port}/cookie-manager/`);
+            console.log(`初始密码: ${cookieManagerAuth.value.initialPassword}`);
+            console.log('请使用初始密码登录后设置新密码');
+            console.log('重置密码: 删除项目根目录下的 .cookie-manager-auth.json 文件');
+            console.log('========================================\n');
+        } else {
+            console.log('\n========================================');
+            console.log(`🍪 Cookie Manager 访问地址: http://127.0.0.1:${port}/cookie-manager/`);
+            console.log(`重置密码: 删除 .cookie-manager-auth.json 文件后重启`);
+            console.log('========================================\n');
+        }
     }
+    if (cookieManagerAuth && cookieManagerAuth.value) {
+        const { setupCookieManagerTerminal } = await import('./cookie-manager/index.mjs');
+        setupCookieManagerTerminal(server);
+    }
+    // 启动隧道
+    await setupTunnelFromEnv(port);
+
     if (!global.gc) {
         console.warn('建议使用 --expose-gc 标志启动you代理以启用垃圾回收');
         console.warn('命令示例: node --expose-gc index.mjs');
@@ -1084,8 +1037,14 @@ function OpenAIApiKeyAuth(req, res, next) {
 }
 
 // Path: cookieUtils.mjs
-class ClientState {
+class RequestState {
     #closed = false;
+    #requestId = null;
+
+    constructor(requestId) {
+        this.#requestId = requestId;
+        this.#closed = false;
+    }
 
     setClosed(value) {
         this.#closed = Boolean(value);
@@ -1094,6 +1053,13 @@ class ClientState {
     isClosed() {
         return this.#closed;
     }
+
+    getRequestId() {
+        return this.#requestId;
+    }
 }
 
-export const clientState = new ClientState();
+// 请求状态工厂
+function createRequestState(requestId) {
+    return new RequestState(requestId || uuidv4());
+}

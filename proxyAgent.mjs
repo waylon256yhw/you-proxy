@@ -154,6 +154,7 @@ function createProxyAgent() {
  * 设置全局代理
  */
 export function setGlobalProxy() {
+    setProxyEnvironmentVariables();
     const proxyUrl = getProxyUrl();
     if (proxyUrl) {
         try {

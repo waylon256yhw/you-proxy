@@ -1,0 +1,353 @@
+/* 动画定义 */
+@keyframes bounce {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+    }
+    to {
+        transform: translateX(0);
+    }
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+@keyframes rotate {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* 猫咪加载动画 */
+.cat-body {
+    width: 50px;
+    height: 50px;
+    background: var(--primary-color);
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    position: relative;
+    animation: bounce 1s infinite;
+}
+
+.cat-body::before,
+.cat-body::after {
+    content: '';
+    position: absolute;
+    width: 15px;
+    height: 25px;
+    background: var(--primary-color);
+    border-radius: 50% 50% 0 0;
+    top: -10px;
+}
+
+.cat-body::before {
+    left: 5px;
+    transform: rotate(-15deg);
+}
+
+.cat-body::after {
+    right: 5px;
+    transform: rotate(15deg);
+}
+
+.cat-tail {
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    background: var(--primary-color);
+    border-radius: 50%;
+    bottom: 0;
+    right: -20px;
+    animation: pulse 1s infinite;
+}
+
+/* 樱花飘落动画 */
+@keyframes sakuraFall {
+    0% {
+        transform: translateY(-100vh) rotate(0deg);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(100vh) rotate(720deg);
+        opacity: 0.3;
+    }
+}
+
+.sakura::before,
+.sakura::after {
+    content: '🌸';
+    position: absolute;
+    font-size: 20px;
+    animation: sakuraFall 10s linear infinite;
+}
+
+.sakura::before {
+    left: 10%;
+    animation-delay: 0s;
+}
+
+.sakura::after {
+    left: 80%;
+    animation-delay: 5s;
+}
+
+/* 气泡动画 */
+@keyframes bubbleFloat {
+    0% {
+        transform: translateY(100vh) scale(0);
+    }
+    50% {
+        transform: translateY(50vh) scale(1);
+    }
+    100% {
+        transform: translateY(-100vh) scale(0);
+    }
+}
+
+.bubble::before,
+.bubble::after {
+    content: '';
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    background: radial-gradient(circle, rgba(255, 182, 193, 0.3), transparent);
+    border-radius: 50%;
+    animation: bubbleFloat 8s ease-in-out infinite;
+}
+
+.bubble::before {
+    left: 20%;
+    animation-delay: 0s;
+}
+
+.bubble::after {
+    right: 20%;
+    animation-delay: 4s;
+}
+
+/* 星星闪烁 */
+@keyframes starTwinkle {
+    0%, 100% {
+        opacity: 0.3;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.2);
+    }
+}
+
+.star::before,
+.star::after {
+    content: '✨';
+    position: absolute;
+    font-size: 16px;
+    animation: starTwinkle 3s ease-in-out infinite;
+}
+
+.star::before {
+    top: 20%;
+    left: 15%;
+    animation-delay: 0s;
+}
+
+.star::after {
+    top: 60%;
+    right: 25%;
+    animation-delay: 1.5s;
+}
+
+/* 页面加载动画 */
+.container > * {
+    animation: fadeIn 0.6s ease-out forwards;
+    opacity: 0;
+}
+
+.main-header {
+    animation-delay: 0.1s;
+}
+
+.toolbar {
+    animation-delay: 0.2s;
+}
+
+.main-content {
+    animation-delay: 0.3s;
+}
+
+/* 表格行动画 */
+.session-row {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* 悬浮效果 */
+.stat-card:hover {
+    animation: pulse 0.6s ease-in-out;
+}
+
+.btn:hover {
+    animation: pulse 0.4s ease-in-out;
+}
+
+/* 通知入场动画 */
+.notification-enter {
+    animation: slideInRight 0.3s ease-out;
+}
+
+/* 日志展开动画 */
+@keyframes logExpand {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.log-full {
+    animation: logExpand 0.3s ease-out;
+}
+
+/* 展开图标旋转动画 */
+.debug-log-item.expanded .expand-icon {
+    animation: rotateIcon 0.3s ease-out;
+}
+
+@keyframes rotateIcon {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(180deg);
+    }
+}
+
+/* 窗口进入动画 */
+@keyframes windowSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(30px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes windowFadeIn {
+    from {
+        opacity: 0;
+        backdrop-filter: blur(0px);
+    }
+    to {
+        opacity: 1;
+        backdrop-filter: blur(5px);
+    }
+}
+
+/* Cookie预览窗口动画 */
+.cookie-preview-window {
+    animation: windowSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* 模态框背景动画 */
+.modal {
+    animation: windowFadeIn 0.3s ease-out;
+}
+
+/* 模态框内容动画 */
+.modal-content {
+    animation: windowSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* 状态模态框特殊动画 */
+@keyframes statusModalIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+#statusModal .modal-content {
+    animation: statusModalIn 0.3s ease-out;
+}
+
+/* 弹性进入效果 */
+@keyframes bounceIn {
+    0% {
+        opacity: 0;
+        transform: scale(0.3);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    70% {
+        transform: scale(0.9);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* 确认框特殊动画 */
+.modal-confirm {
+    animation: bounceIn 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* 窗口关闭动画 */
+@keyframes windowSlideOut {
+    from {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+    }
+}
+
+/* 关闭类 */
+.modal.closing {
+    animation: windowFadeIn 0.3s ease-out reverse;
+}
+
+.modal.closing .modal-content {
+    animation: windowSlideOut 0.3s ease-in;
+}

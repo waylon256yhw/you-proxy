@@ -1,0 +1,1122 @@
+/* ========================================
+   左侧侧边栏
+   ======================================== */
+
+/* CSS */
+:root {
+    --sidebar-width: 50vw;
+    --sidebar-bg: rgba(255, 255, 255, 0.98);
+    --sidebar-shadow: 5px 0 20px rgba(0, 0, 0, 0.1);
+    --sidebar-border: rgba(255, 182, 193, 0.3);
+    --config-item-bg: rgba(255, 255, 255, 0.8);
+    --success-color: #66d9a0;
+    --warning-color: #feca57;
+    --danger-color: #ff6b6b;
+    --info-color: #74b9ff;
+    --primary-color: #ff6b9d;
+    --primary-dark: #ee5a6f;
+    --primary-light: #ffb3d0;
+    --text-secondary: #636e72;
+    --border-color: #e0e0e0;
+}
+
+/* 侧边栏触发按钮 */
+.sidebar-trigger {
+    position: fixed;
+    left: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+    color: white;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(255, 107, 157, 0.3);
+    z-index: 999;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sidebar-trigger:hover {
+    transform: translateY(-50%) scale(1.1);
+    box-shadow: 0 6px 20px rgba(255, 107, 157, 0.4);
+}
+
+.sidebar-trigger i {
+    font-size: 24px;
+    transition: transform 0.3s ease;
+}
+
+.sidebar-trigger.active i {
+    transform: rotate(180deg);
+}
+
+/* 侧边栏容器 */
+.left-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: var(--sidebar-width);
+    height: 100vh;
+    background: var(--sidebar-bg);
+    box-shadow: var(--sidebar-shadow);
+    transform: translateX(-100%);
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    backdrop-filter: blur(10px);
+    border-right: 1px solid var(--border-color);
+}
+
+.left-sidebar.open {
+    transform: translateX(0);
+}
+
+/* 侧边栏遮罩层 */
+.sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    z-index: 999;
+}
+
+.sidebar-overlay.show {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* 侧边栏头部 */
+.sidebar-header {
+    padding: 15px 20px 10px 20px;
+    background: linear-gradient(135deg, var(--primary-light), var(--secondary-color));
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sidebar-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.sidebar-title h2 {
+    font-size: 20px;
+    font-weight: 600;
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sidebar-close {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    cursor: pointer;
+    color: white;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+}
+
+.sidebar-close:hover {
+    background: rgba(255, 255, 255, 0.5);
+    transform: rotate(90deg);
+}
+
+/* 侧边栏头部按钮 */
+.sidebar-actions {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    padding: 5px 0;
+}
+
+.restart-button,
+.terminal-button {
+    padding: 10px 24px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 600;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: auto;
+    min-width: 140px;
+    flex: none;
+    color: white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.restart-button i,
+.terminal-button i {
+    font-size: 18px;
+}
+
+.restart-button {
+    background: linear-gradient(135deg, var(--danger-color), #f85858);
+}
+
+.restart-button:hover {
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: 0 6px 16px rgba(255, 107, 107, 0.4);
+}
+
+.restart-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.restart-button .spinner {
+    display: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.restart-button.loading .spinner {
+    display: inline-block;
+}
+
+.restart-button.loading .text {
+    display: none;
+}
+
+.terminal-button {
+    background: linear-gradient(135deg, var(--info-color), #4ea8de);
+}
+
+.terminal-button:hover {
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: 0 6px 16px rgba(116, 185, 255, 0.4);
+}
+
+/* 配置文件选项卡 */
+.config-tabs {
+    display: flex;
+    background: white;
+    border-bottom: 1px solid var(--sidebar-border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.config-tab {
+    flex: 1;
+    padding: 12px 15px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    transition: all 0.3s;
+    position: relative;
+}
+
+.config-tab:hover {
+    background: rgba(255, 107, 157, 0.05);
+}
+
+.config-tab.active {
+    color: var(--primary-color);
+}
+
+.config-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--primary-color);
+}
+
+/* 侧边栏内容包装 */
+.sidebar-content-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+
+/* 编辑器控制按钮 */
+.editor-controls {
+    position: absolute;
+    top: 10px;
+    right: 20px;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: white;
+    padding: 8px 12px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.font-size-btn {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border-color);
+    background: white;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    color: var(--text-secondary);
+}
+
+.font-size-btn:hover {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+.font-size-display {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    min-width: 40px;
+    text-align: center;
+}
+
+/* 侧边栏内容 */
+.sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+/* 配置项容器 */
+.config-items {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.config-item {
+    background: var(--config-item-bg);
+    border: 1px solid var(--sidebar-border);
+    border-radius: 12px;
+    padding: 15px;
+    transition: all 0.3s;
+}
+
+.config-item:hover {
+    background: rgba(255, 107, 157, 0.05);
+    transform: translateX(5px);
+    box-shadow: 0 2px 8px rgba(255, 107, 157, 0.1);
+    border-color: var(--primary-light);
+}
+
+/* 配置注释 */
+.config-comment {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+    line-height: 1.6;
+    font-style: italic;
+    padding: 10px 14px;
+    background: rgba(255, 182, 193, 0.05);
+    border-radius: 8px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    border-left: 3px solid var(--primary-light);
+}
+
+/* 长注释 */
+.config-comment.multi-line {
+    max-height: 120px;
+    overflow-y: auto;
+    position: relative;
+}
+
+.config-comment.multi-line::-webkit-scrollbar {
+    width: 6px;
+}
+
+.config-comment.multi-line::-webkit-scrollbar-thumb {
+    background: var(--primary-light);
+    border-radius: 3px;
+}
+
+/* 配置变量 */
+.config-variable {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.config-name {
+    flex: 0 0 200px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--primary-color);
+    word-break: break-all;
+}
+
+.config-value {
+    flex: 1;
+}
+
+/* 输入框 */
+.config-value .config-input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 2px solid var(--sidebar-border);
+    border-radius: 8px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    transition: all 0.3s ease;
+    background: white;
+}
+
+/* focus状态 */
+.config-value .config-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(255, 107, 157, 0.1);
+}
+
+/* 修改状态 */
+.config-item .config-value .config-input.modified {
+    border: 2px solid var(--success-color);
+    box-shadow: 0 0 0 3px rgba(102, 217, 160, 0.15);
+    background: rgba(102, 217, 160, 0.03);
+}
+
+/* 同时focus和modified状态 */
+.config-item .config-value .config-input.modified:focus {
+    border: 2px solid var(--success-color);
+    box-shadow: 0 0 0 4px rgba(102, 217, 160, 0.2);
+    background: rgba(102, 217, 160, 0.05);
+}
+
+/* 输入框占位符 */
+.config-input::placeholder {
+    color: #999;
+    font-style: italic;
+    font-size: 12px;
+}
+
+.config-input:focus::placeholder {
+    color: #bbb;
+}
+
+/* 布尔值复选框 */
+.config-checkbox-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    transition: all 0.3s;
+}
+
+.config-item .config-checkbox-wrapper.modified {
+    background: rgba(102, 217, 160, 0.1);
+    padding: 4px 8px;
+    border-radius: 6px;
+    margin: -4px -8px;
+}
+
+.config-checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.config-checkbox-input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.config-checkbox-box {
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--primary-color);
+    border-radius: 6px;
+    transition: all 0.3s;
+    position: relative;
+    background: white;
+}
+
+.config-checkbox-input:checked + .config-checkbox-box {
+    background: var(--primary-color);
+}
+
+.config-checkbox-box::after {
+    content: '';
+    position: absolute;
+    display: none;
+    left: 7px;
+    top: 3px;
+    width: 6px;
+    height: 12px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.config-checkbox-input:checked + .config-checkbox-box::after {
+    display: block;
+}
+
+.config-checkbox-label:hover .config-checkbox-box {
+    border-color: var(--primary-dark);
+    box-shadow: 0 0 0 3px rgba(255, 107, 157, 0.1);
+}
+
+/* 布尔状态文字 */
+.config-boolean-status {
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--text-secondary);
+    min-width: 60px;
+    text-align: left;
+    transition: all 0.3s;
+}
+
+/* true 状态样式 */
+.config-checkbox-wrapper .config-checkbox-input:checked ~ .config-boolean-status {
+    background: rgba(102, 217, 160, 0.15);
+    color: var(--success-color);
+}
+
+/* false 状态样式 */
+.config-checkbox-wrapper .config-checkbox-input:not(:checked) ~ .config-boolean-status {
+    background: rgba(255, 107, 107, 0.15);
+    color: var(--danger-color);
+}
+
+/* 修改的复选框 */
+.config-checkbox-wrapper.modified .config-checkbox-box {
+    border-color: var(--success-color);
+    animation: pulse 2s infinite;
+}
+
+.config-checkbox-wrapper.modified .config-boolean-status {
+    background: rgba(102, 217, 160, 0.2);
+    color: var(--success-color);
+}
+
+/* 编辑器模式 */
+.config-editor {
+    height: calc(100% - 20px);
+}
+
+.code-editor {
+    width: 100%;
+    height: 100%;
+    padding: 15px;
+    border: 2px solid var(--sidebar-border);
+    border-radius: 10px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    background: rgba(0, 0, 0, 0.02);
+    resize: none;
+}
+
+.code-editor:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    background: white;
+}
+
+/* 空状态 */
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-secondary);
+}
+
+.empty-state i {
+    font-size: 64px;
+    opacity: 0.3;
+    margin-bottom: 20px;
+    display: block;
+}
+
+.empty-state p {
+    font-size: 16px;
+    margin-bottom: 10px;
+}
+
+/* 底部操作栏 */
+.sidebar-footer {
+    padding: 15px 20px;
+    background: white;
+    border-top: 1px solid var(--sidebar-border);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.mode-toggle {
+    display: flex;
+    gap: 5px;
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 8px;
+    padding: 3px;
+}
+
+.mode-btn {
+    padding: 8px 16px;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    transition: all 0.3s;
+}
+
+.mode-btn.active {
+    background: white;
+    color: var(--primary-color);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.mode-btn:hover:not(.active) {
+    background: rgba(255, 107, 157, 0.1);
+}
+
+.action-buttons {
+    margin-left: auto;
+    display: flex;
+    gap: 10px;
+}
+
+/* 重置按钮 */
+.btn-reset {
+    padding: 10px 20px;
+    background: linear-gradient(135deg, var(--info-color), #4ea8de);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.btn-reset:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(116, 185, 255, 0.3);
+    background: linear-gradient(135deg, #5fa8ff, #3e98de);
+}
+
+/* 保存按钮 */
+.btn-save {
+    padding: 10px 24px;
+    background: linear-gradient(135deg, var(--success-color), #52c994);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-save::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    transform: translate(-50%, -50%);
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    transition: width 0.6s ease, height 0.6s ease;
+}
+
+.btn-save:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 217, 160, 0.3);
+}
+
+.btn-save:hover::before {
+    width: 300px;
+    height: 300px;
+}
+
+/* 保存按钮有更改时样式 */
+.sidebar-footer .btn-save.has-changes {
+    animation: changesPulse 0.5s ease, glow 2s ease-in-out infinite;
+}
+
+.sidebar-footer .btn-save.has-changes:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 193, 7, 0.4);
+}
+
+/* 终端窗口样式 */
+.terminal-window {
+    position: fixed;
+    background: #1e1e1e;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+}
+
+.terminal-window.dragging {
+    opacity: 0.9;
+    cursor: move;
+}
+
+.terminal-window.resizing {
+    user-select: none;
+}
+
+.terminal-header {
+    padding: 12px 16px;
+    background: #2d2d2d;
+    border-radius: 12px 12px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: move;
+    user-select: none;
+}
+
+.terminal-title {
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.terminal-controls {
+    display: flex;
+    gap: 8px;
+}
+
+/* 终端控制按钮 */
+.terminal-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.terminal-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.terminal-btn.active {
+    background: var(--primary-color);
+}
+
+/* 自动滚动按钮激活状态 */
+.terminal-btn.terminal-autoscroll.active {
+    background: var(--primary-color);
+    color: white;
+    box-shadow: 0 0 8px rgba(255, 107, 157, 0.4);
+}
+
+.terminal-btn.terminal-autoscroll.active:hover {
+    background: var(--primary-dark);
+    box-shadow: 0 0 12px rgba(255, 107, 157, 0.6);
+}
+
+/* 清空按钮 */
+.terminal-btn[title="清空"]:hover {
+    background: var(--warning-color);
+}
+
+/* 按钮按下效果 */
+.terminal-btn:active {
+    transform: scale(0.95);
+}
+
+.terminal-close:hover {
+    background: var(--danger-color);
+}
+
+/* 终端输出 */
+.terminal-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    color: #e0e0e0;  /* 浅灰色 */
+    background: #1e1e1e;
+}
+
+.terminal-output {
+    line-height: 1.6;
+}
+
+.terminal-line {
+    margin-bottom: 4px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    padding: 2px 4px;  /* 内边距 */
+    border-radius: 3px;  /* 圆角 */
+    transition: background 0.2s;
+    animation: terminalFadeIn 0.3s ease-out;
+}
+
+/* 鼠标悬停效果 */
+.terminal-line:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.terminal-line.terminal-log {
+    color: #e7e7e7;  /* 白 - 普通日志 */
+}
+
+/* 成功/失败 状态 */
+.terminal-line.terminal-success {
+    color: #66d9a0;  /* 亮绿色 - 成功 */
+}
+
+.terminal-line.terminal-normal {
+    color: #e0e0e0;  /* 默认灰色 */
+}
+
+.terminal-line.terminal-error {
+    color: #ff6188;  /* 红色 - 错误 */
+    background: rgba(255, 97, 136, 0.1);
+}
+
+.terminal-line.terminal-warning {
+    color: #ffd866;  /* 黄色 - 警告 */
+    background: rgba(255, 216, 102, 0.08);
+}
+
+.terminal-line.terminal-info {
+    color: #78dce8;  /* 青色 - 信息 */
+}
+
+.terminal-line.terminal-debug {
+    color: #ab9df2;  /* 紫色 - 调试 */
+    opacity: 0.9;
+}
+
+/* 日志级别标记 */
+.log-badge {
+    display: inline-block;
+    padding: 0 6px;
+    margin-right: 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 1px;
+}
+
+/* 父元素应用不同标记 */
+.terminal-log .log-badge {
+    background: rgba(169, 220, 118, 0.2);
+    color: #a9dc76;
+    border: 1px solid rgba(169, 220, 118, 0.3);
+}
+
+.terminal-error .log-badge {
+    background: rgba(255, 97, 136, 0.2);
+    color: #ff6188;
+    border: 1px solid rgba(255, 97, 136, 0.3);
+}
+
+.terminal-warning .log-badge {
+    background: rgba(255, 216, 102, 0.2);
+    color: #ffd866;
+    border: 1px solid rgba(255, 216, 102, 0.3);
+}
+
+.terminal-info .log-badge {
+    background: rgba(120, 220, 232, 0.2);
+    color: #78dce8;
+    border: 1px solid rgba(120, 220, 232, 0.3);
+}
+
+.terminal-debug .log-badge {
+    background: rgba(171, 157, 242, 0.2);
+    color: #ab9df2;
+    border: 1px solid rgba(171, 157, 242, 0.3);
+}
+
+/* 终端欢迎消息 */
+.terminal-welcome {
+    color: #999;
+    font-style: italic;
+}
+
+/* 特殊分隔线 */
+.terminal-line.equals-line {
+    color: #ffd866;
+    font-weight: 600;
+    opacity: 0.8;
+}
+
+/* 时间戳样式 */
+.terminal-line[class*="terminal-"] {
+    position: relative;
+}
+
+/* 滚动条 - 终端专用 */
+.terminal-content::-webkit-scrollbar {
+    width: 10px;
+    background: #2d2d2d;
+}
+
+.terminal-content::-webkit-scrollbar-track {
+    background: #2d2d2d;
+    border-radius: 5px;
+}
+
+.terminal-content::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #555, #666);
+    border-radius: 5px;
+    border: 1px solid #2d2d2d;
+}
+
+.terminal-content::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, #666, #777);
+}
+
+/* 不同类型输出添加左边框 */
+.terminal-error {
+    border-left: 3px solid #ff6188;
+    padding-left: 8px !important;
+}
+
+.terminal-warning {
+    border-left: 3px solid #ffd866;
+    padding-left: 8px !important;
+}
+
+.terminal-info {
+    border-left: 3px solid #78dce8;
+    padding-left: 8px !important;
+}
+
+.terminal-resize-handle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 20px;
+    height: 20px;
+    cursor: se-resize;
+    background: linear-gradient(135deg, transparent 50%, #555 50%);
+    border-radius: 0 0 12px 0;
+}
+
+/* 动画定义 */
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(102, 217, 160, 0.4);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(102, 217, 160, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(102, 217, 160, 0);
+    }
+}
+
+@keyframes changesPulse {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+@keyframes glow {
+    0%, 100% {
+        box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3);
+    }
+    50% {
+        box-shadow: 0 6px 20px rgba(255, 193, 7, 0.5);
+    }
+}
+
+/* 动画 - 新消息进入 */
+@keyframes terminalFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 图标定义 */
+.icon-menu::before { content: "☰"; }
+.icon-restart::before { content: "🔄"; }
+.icon-terminal::before { content: "💻"; }
+.icon-file::before { content: "📄"; }
+.icon-input::before { content: "✏️"; }
+.icon-editor::before { content: "📝"; }
+.icon-save::before { content: "💾"; }
+.icon-empty::before { content: "📂"; }
+.icon-reset::before { content: "↺"; }
+.icon-plus::before { content: "+"; }
+.icon-minus::before { content: "-"; }
+.icon-clear::before { content: "🗑"; }
+.icon-autoscroll::before { content: "⬇"; }
+.icon-close::before { content: "✖"; }
+
+/* 响应式布局 */
+@media (max-width: 768px) {
+    :root {
+        --sidebar-width: 85vw;
+    }
+
+    .restart-button,
+    .terminal-button {
+        padding: 8px 16px;
+        font-size: 14px;
+        min-width: 110px;
+    }
+
+    .restart-button i,
+    .terminal-button i {
+        font-size: 16px;
+    }
+
+    .sidebar-header {
+        padding: 12px 15px 8px 15px;
+    }
+
+    .sidebar-title h2 {
+        font-size: 18px;
+    }
+
+    .sidebar-close {
+        width: 24px;
+        height: 24px;
+    }
+
+    .config-tab {
+        padding: 10px 12px;
+        font-size: 12px;
+    }
+    
+    .sidebar-trigger {
+        width: 40px;
+        height: 40px;
+        left: 15px;
+    }
+
+    .config-name {
+        flex: 0 0 120px;
+    }
+
+    .config-comment {
+        font-size: 13px;
+        padding: 8px 12px;
+    }
+
+    .config-item {
+        padding: 12px;
+    }
+
+    .config-checkbox-wrapper {
+        gap: 8px;
+    }
+
+    .config-checkbox-box {
+        width: 20px;
+        height: 20px;
+    }
+
+    .config-checkbox-box::after {
+        left: 5px;
+        top: 2px;
+        width: 5px;
+        height: 10px;
+    }
+
+    .config-boolean-status {
+        font-size: 12px;
+        padding: 3px 8px;
+        min-width: 50px;
+    }
+
+    .sidebar-actions {
+        flex-direction: column;
+        gap: 8px;
+    }
+}
+
+@media (max-width: 480px) {
+    :root {
+        --sidebar-width: 100vw;
+    }
+
+    .config-variable {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .config-name {
+        flex: none;
+        margin-bottom: 8px;
+    }
+}

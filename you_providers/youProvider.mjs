@@ -13,7 +13,6 @@ import NetworkMonitor from '../networkMonitor.mjs';
 import {insertGarbledText} from './garbledText.mjs';
 import * as imageStorage from "../imageStorage.mjs";
 import Logger from './logger.mjs';
-import {clientState} from "../index.mjs";
 import SessionManager from '../sessionManager.mjs';
 import {updateLocalConfigCookieByEmailNonBlocking} from './cookieUpdater.mjs';
 import crypto from 'node:crypto';
@@ -40,7 +39,7 @@ class YouProvider {
         this.isSingleSession = false; // 是否为单账号模式
 
         // 初始化调试消息管理器
-        this.debugManager = new DebugMessageManager(__dirname, 100);
+        this.debugManager = new DebugMessageManager(__dirname, 10000);
     }
 
     getRandomSwitchThreshold(session) {
@@ -669,6 +668,7 @@ class YouProvider {
                                 }
                             } else {
                                 console.log(`[${usernameToValidate}] 浏览器中无有效Cookie，使用配置文件中Cookie`);
+                                await clearCookiesNonBlocking(page);
 
                                 accountBrowserMap.set(usernameToValidate, browserInstance);
                                 browserAccountMap.set(browserInstance.id, usernameToValidate);
@@ -790,7 +790,8 @@ class YouProvider {
                         }
                         // 解析JSON
                         const json = JSON.parse(content);
-                        const allowNonPro = process.env.ALLOW_NON_PRO === "true";
+                        const allowNonPro = process.env.ALLOW_NON_PRO === 'true';
+                        // console.log(`ALLOW_NON_PRO 设置: ${allowNonPro}`);
 
                         // Team账号验证
                         if (json.org_subscriptions && json.org_subscriptions.length > 0) {
@@ -862,6 +863,7 @@ class YouProvider {
                             console.log(`${usernameToValidate} 无有效订阅`);
                             console.warn(`警告: ${usernameToValidate} 可能没有有效的订阅。请检查You是否有有效的Pro或Team订阅。`);
                             session.valid = false;
+                            await clearCookiesNonBlocking(page);
 
                             // 标记为失效
                             await markAccountAsInvalid(usernameToValidate, this.config, "无有效订阅");
@@ -1326,7 +1328,7 @@ class YouProvider {
         }
 
         if (!cookieRegistry.isValidSession(cookieFields)) {
-            console.error('无法提取有效的会话cookie');
+            console.error('Unable to extract a valid session cookie');
             return null;
         }
 
@@ -1339,24 +1341,36 @@ class YouProvider {
         // 添加元数据
         if (cookieFields.ds) {
             try {
-                const jwt = JSON.parse(Buffer.from(cookieFields.ds.split(".")[1], "base64").toString());
-                sessionCookie.email = jwt.email;
-                sessionCookie.isNewVersion = true;
-                sessionCookie.authType = 'new';  // 标记类型
-                if (jwt.tenants) {
-                    sessionCookie.tenants = jwt.tenants;
+                // 验证 DS token
+                const dsParts = cookieFields.ds.split(".");
+                if (dsParts.length >= 2 && dsParts[1]) {
+                    const jwt = JSON.parse(Buffer.from(dsParts[1], "base64").toString());
+                    sessionCookie.email = jwt.email;
+                    sessionCookie.isNewVersion = true;
+                    sessionCookie.authType = 'new';  // 标记类型
+                    if (jwt.tenants) {
+                        sessionCookie.tenants = jwt.tenants;
+                    }
+                } else {
+                    console.error('Invalid DS token format: missing required parts');
                 }
             } catch (error) {
-                console.error('解析DS令牌时出错:', error);
+                console.error('Error parsing DS token:', error);
             }
         } else if (cookieFields.jwtToken) {
             try {
-                const jwt = JSON.parse(Buffer.from(cookieFields.jwtToken.split(".")[1], "base64").toString());
-                sessionCookie.email = jwt.user?.email || jwt.email || jwt.user?.name;
-                sessionCookie.isNewVersion = false;
-                sessionCookie.authType = 'old';  // 标记类型
+                // 验证 JWT token
+                const jwtParts = cookieFields.jwtToken.split(".");
+                if (jwtParts.length >= 2 && jwtParts[1]) {
+                    const jwt = JSON.parse(Buffer.from(jwtParts[1], "base64").toString());
+                    sessionCookie.email = jwt.user?.email || jwt.email || jwt.user?.name;
+                    sessionCookie.isNewVersion = false;
+                    sessionCookie.authType = 'old';  // 标记类型
+                } else {
+                    console.error('Invalid JWT token format: missing required parts');
+                }
             } catch (error) {
-                console.error('JWT令牌解析错误:', error);
+                console.error('Error parsing JWT token:', error);
             }
         }
 
@@ -1506,7 +1520,9 @@ class YouProvider {
                             stream = false,
                             proxyModel,
                             useCustomMode = false,
-                            modeSwitched = false
+                            modeSwitched = false,
+                            clientIp = null,
+                            requestState = null
                         }) {
         if (this.networkMonitor.isNetworkBlocked()) {
             throw new Error("网络异常，请稍后再试");
@@ -1515,6 +1531,7 @@ class YouProvider {
         if (!session || !session.valid) {
             throw new Error(`用户 ${username} 的会话无效`);
         }
+
         const emitter = new EventEmitter();
         let page = browserInstance.page;
         // 初始化 session 相关的模式属性
@@ -1885,13 +1902,16 @@ class YouProvider {
         // 使用内容创建文件名
         const randomFileName = this.generateContentBasedFileName(messages);
         console.log(`Generated content-based file name: ${randomFileName}`);
+        let debugFilePath = null; // 保存文件路径
 
         // 试算用户消息长度
         if (encodeURIComponent(JSON.stringify(userMessage)).length + encodeURIComponent(userQuery).length > 32000) {
             console.log("Using file upload mode");
 
             // 应用格式化逻辑
-            const formattedMessages = formatMessages(messages, proxyModel, randomFileName);
+            const formattedMessages = formatMessages(messages, proxyModel, randomFileName, {
+                ip: clientIp
+            });
 
             // 将格式化后的消息转换为纯文本
             let previousMessages = formattedMessages
@@ -1925,9 +1945,9 @@ class YouProvider {
 
             // 创建本地副本（用于调试）
             try {
-                const savedPath = this.debugManager.saveDebugMessage(previousMessages);
+                debugFilePath = this.debugManager.saveDebugMessage(previousMessages);
                 const stats = this.debugManager.getStats();
-                console.log(`Debug message saved to: ${savedPath}`);
+                console.log(`Debug message saved to: ${debugFilePath}`);
                 console.log(`Debug file statistics: ${stats.fileCount}/${this.debugManager.maxFiles} files, total size: ${stats.totalSizeMB} MB`);
             } catch (error) {
                 console.error(`Failed to save debug message: ${error.message}`);
@@ -2112,6 +2132,8 @@ class YouProvider {
         const customEndMarker = (process.env.CUSTOM_END_MARKER || '').replace(/^"|"$/g, '').trim(); // 自定义终止符
         let isEnding = false; // 是否正在结束
         const requestTime = new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'}); // 请求时间
+        let responseEvents = [];  // 响应事件
+        const responseStartTime = Date.now();  // 响应开始时间
 
         let unusualQueryVolumeTriggered = false; // 是否触发了异常请求量提示
 
@@ -2132,11 +2154,34 @@ class YouProvider {
                 clearInterval(heartbeatInterval);
                 heartbeatInterval = null;
             }
-            await page.evaluate((traceId) => {
-                if (window["exit" + traceId]) {
-                    window["exit" + traceId]();
+
+            try {
+                await page.evaluate((traceId) => {
+                    if (window["exit" + traceId]) {
+                        window["exit" + traceId]();
+                    }
+                }, traceId).catch(() => {});
+            } catch (error) {
+                console.error(`[${username}] 停止页面请求时出错:`, error);
+            }
+
+            // 追加响应数据
+            if (debugFilePath) {
+                try {
+                    const duration = Date.now() - responseStartTime;
+                    this.debugManager.appendResponseData(debugFilePath, responseEvents, {
+                        username: username,
+                        model: proxyModel,
+                        mode: session.currentMode,
+                        traceId: traceId,
+                        requestTime: requestTime,
+                        duration: duration
+                    });
+                } catch (error) {
+                    console.error(`Failed to append response data: ${error.message}`);
                 }
-            }, traceId);
+            }
+
             if (!this.isSingleSession && !skipClearCookies) {
                 await clearCookiesNonBlocking(page);
             }
@@ -2146,6 +2191,8 @@ class YouProvider {
                 session.modeStatus.custom = false;
                 this.sessionManager.recordLimitedAccount(username);  // 记录冷却
             }
+
+            await page.goto("https://you.com/?chatMode=custom", {waitUntil: 'domcontentloaded'});
         };
 
         // 缓存
@@ -2161,9 +2208,12 @@ class YouProvider {
         req_param.append("count", "10");
         req_param.append("safeSearch", "Moderate"); // Off|Moderate|Strict
         req_param.append("mkt", "ja-JP");
-        req_param.append("enable_worklow_generation_ux", "true");
+        req_param.append("enable_worklow_generation_ux", process.env.ENABLE_WORKFLOW_GENERATION_UX === "false" ? "false" : "true");
+        if (process.env.INCOGNITO_MODE === "true") {
+            req_param.append("incognito", "true");
+        }
         req_param.append("domain", "youchat");
-        req_param.append("use_personalization_extraction", "true");
+        req_param.append("use_personalization_extraction", process.env.USE_PERSONALIZATION_EXTRACTION === "false" ? "false" : "true");
         req_param.append("queryTraceId", traceId);
         req_param.append("chatId", traceId);
         req_param.append("conversationTurnId", msgid);
@@ -2174,27 +2224,29 @@ class YouProvider {
             if (uploadedImage) {
                 sources.push({
                     source_type: "user_file",
-                    user_filename: uploadedImage.user_filename,
                     filename: uploadedImage.filename,
+                    user_filename: uploadedImage.user_filename,
                     size_bytes: Buffer.byteLength(lastImage.base64Data, 'base64'),
                 });
             }
             if (uploadedFile) {
                 sources.push({
                     source_type: "user_file",
-                    user_filename: randomFileName,
                     filename: uploadedFile.filename,
+                    user_filename: randomFileName,
                     size_bytes: messageBuffer.length,
                 });
             }
             req_param.append("sources", JSON.stringify(sources));
         }
-        req_param.append("search_additional_sources", "true");
-        req_param.append("search_depth", "dynamic");
         if (userChatModeId === "custom") req_param.append("selectedAiModel", proxyModel);
         req_param.append("traceId", `${traceId}|${msgid}|${new Date().toISOString()}`);
-        req_param.append("use_nested_youchat_updates", "false");
-        req_param.append("enable_agent_clarification_questions", "true")
+        req_param.append("enable_editable_workflow", process.env.ENABLE_EDITABLE_WORKFLOW === "false" ? "false" : "true");
+        req_param.append("use_nested_youchat_updates", process.env.USE_NESTED_YOUCHAT_UPDATES === "false" ? "false" : "true");
+        req_param.append("enable_agent_clarification_questions", process.env.ENABLE_AGENT_CLARIFICATION_QUESTIONS === "false" ? "false" : "true")
+
+        // req_param.append("search_additional_sources", "false");
+        // req_param.append("search_depth", "dynamic");
         const url = "https://you.com/api/streamingSearch?" + req_param.toString();
         const enableDelayLogic = process.env.ENABLE_DELAY_LOGIC === 'true'; // 是否启用延迟逻辑
         // 输出 userQuery
@@ -2320,7 +2372,7 @@ class YouProvider {
                         return;
                     }
 
-                    let isEnding = false;
+                    let isEnding = false; // 是否正在结束
                     let customEndMarkerTimer = null;
 
                     // CoT状态跟踪
@@ -2811,7 +2863,7 @@ class YouProvider {
 
                 if (stream) {
                     heartbeatInterval = setInterval(() => {
-                        if (!isEnding && !clientState.isClosed()) {
+                        if (!isEnding && (!requestState || !requestState.isClosed())) {
                             emitter.emit("completion", traceId, `\r`);
                         } else {
                             clearInterval(heartbeatInterval);
@@ -2851,29 +2903,49 @@ class YouProvider {
             }
 
             await page.exposeFunction("callback" + traceId, async (event, data) => {
-                if (isEnding) return;
+                // 检查客户端状态
+                if (isEnding || (requestState && requestState.isClosed())) {
+                    if (requestState && requestState.isClosed() && !isEnding) {
+                        console.log(`[${username}] 客户端已断开（请求ID: ${requestState.getRequestId()}），停止处理响应`);
+                        isEnding = true;
+                        try {
+                            await cleanup();
+                            emitter.emit("end", traceId);
+                        } catch (cleanupError) {
+                            console.error(`[${username}] 清理时出错:`, cleanupError);
+                        }
+                    }
+                    return;
+                }
+
+                // 记录响应事件
+                responseEvents.push({
+                    type: event,
+                    data: data,
+                    timestamp: new Date().toISOString()
+                });
 
                 switch (event) {
                     case "openThinking": {
                         // 开始CoT
                         if (stream) {
-                            emitter.emit("completion", traceId, "<think>\n");
+                            emitter.emit("completion", traceId, "<think>\n\n");
                         } else {
-                            finalResponse += "<think>\n";
+                            finalResponse += "<think>\n\n";
                         }
                         // 输出至控制台
-                        process.stdout.write("<think>\n")
+                        process.stdout.write("<think>\n\n")
                         break;
                     }
                     case "closeThinking": {
                         // 结束CoT
                         if (stream) {
-                            emitter.emit("completion", traceId, "\n</think>\n\n");
+                            emitter.emit("completion", traceId, "</think>\n\n</think>\n\n");
                         } else {
-                            finalResponse += "\n</think>\n\n";
+                            finalResponse += "</think>\n\n</think>\n\n";
                         }
                         // 输出至控制台
-                        process.stdout.write("\n</think>\n\n")
+                        process.stdout.write("</think>\n\n</think>\n\n")
                         break;
                     }
                     case "youChatUpdate": {
@@ -3090,7 +3162,7 @@ class YouProvider {
             });
 
             responseTimeout = setTimeout(async () => {
-                if (!responseStarted && !clientState.isClosed()) {
+                if (!responseStarted && (!requestState || !requestState.isClosed())) {
                     console.log(`${responseTimeoutTimer / 1000}秒内没有收到响应，尝试重新发送请求`);
                     const retrySuccess = await resendPreviousRequest();
                     if (!retrySuccess) {
@@ -3106,8 +3178,8 @@ class YouProvider {
                             unusualQueryVolume: unusualQueryVolumeTriggered,
                         });
                     }
-                } else if (clientState.isClosed()) {
-                    console.log("客户端已关闭连接，停止重试");
+                } else if (requestState && requestState.isClosed()) {
+                    console.log(`客户端已关闭连接（请求ID: ${requestState.getRequestId()}），停止重试`);
                     await cleanup();
                     emitter.emit("end", traceId);
                     self.logger.logRequest({
@@ -3123,7 +3195,7 @@ class YouProvider {
 
             if (stream) {
                 heartbeatInterval = setInterval(() => {
-                    if (!isEnding && !clientState.isClosed()) {
+                    if (!isEnding && (!requestState || !requestState.isClosed())) {
                         emitter.emit("completion", traceId, `\r`);
                     } else {
                         clearInterval(heartbeatInterval);
@@ -3156,11 +3228,23 @@ class YouProvider {
         }
 
         const cancel = async () => {
-            await page?.evaluate((traceId) => {
-                if (window["exit" + traceId]) {
-                    window["exit" + traceId]();
+            // 防止重复清理
+            if (!isEnding) {
+                isEnding = true;
+                try {
+                    // 停止页面中请求
+                    await page?.evaluate((traceId) => {
+                        if (window["exit" + traceId]) {
+                            window["exit" + traceId]();
+                        }
+                    }, traceId).catch(console.error);
+                    await cleanup();
+                    // 发出结束信号
+                    emitter.emit("end", traceId);
+                } catch (error) {
+                    console.error(`[${username}] 取消时清理出错:`, error);
                 }
-            }, traceId).catch(console.error);
+            }
         };
 
         return {completion: emitter, cancel};

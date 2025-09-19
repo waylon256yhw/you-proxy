@@ -53,7 +53,7 @@ npm install
 export ACTIVE_PROVIDER=you
 
 # 设置指定浏览器,可以是 'Chromium', 'chrome', 'edge' 或 'auto'
-export BROWSER_TYPE=chrome
+export BROWSER_TYPE=auto
 
 # 设置是否自动下载Chromium
 export AUTO_DOWNLOAD_CHROMIUM=false
@@ -89,7 +89,7 @@ export FORCE_MULTI_SESSION_MODE=true
 # 读取config.mjs, cookie模式使用随机UUID
 export FORCE_REGEN_UUID=true
 # 设置强制固定第一句话
-export FORCE_FILE_UPLOAD_QUERY=false
+export FORCE_FILE_UPLOAD_QUERY=true
 # 是否启用隐身模式
 export INCOGNITO_MODE=true
 # ---------------------------------------------------
@@ -106,11 +106,41 @@ export ENABLE_GARBLED_END=false
 # ---------------------------------------------------
 # -----防特征结束-----
 
+# ========== YouChat 功能配置 ==========
+# 启用工作流生成用户体验 - 允许AI自动生成和建议任务执行流程
+# true: 启用工作流生成，将复杂任务分解为多个步骤
+# false: 禁用工作流生成，使用传统问答模式 (不会输出think, 和`ENABLE_THINKING_CHAIN`类似)
+export ENABLE_WORKFLOW_GENERATION_UX=true
+# 设置开启<think>内置思考传输
+export ENABLE_THINKING_CHAIN=true
+# 启用个性化提取 - 从用户历史对话中学习偏好和习惯
+# true: 根据用户画像个性化回答内容和风格
+# false: 使用标准化回答，不进行个性化处理
+export USE_PERSONALIZATION_EXTRACTION=false
+# 启用可编辑工作流 - 允许用户修改AI生成的工作流步骤
+# true: 用户可以编辑、添加、删除工作流节点
+# false: 工作流只读，用户无法修改
+export ENABLE_EDITABLE_WORKFLOW=true
+# 使用嵌套式聊天更新 - 控制聊天消息的显示和组织方式
+# true: 使用嵌套结构显示消息（树状结构）
+# false: 使用平铺式消息显示（线性结构）
+export USE_NESTED_YOUCHAT_UPDATES=false
+# 启用智能体澄清问题 - AI主动询问模糊问题的详细信息
+# true: 当问题不明确时，AI会主动提出澄清问题
+# false: AI直接基于现有信息回答，不主动澄清
+export ENABLE_AGENT_CLARIFICATION_QUESTIONS=false
+# ========== YouChat 功能配置结束 ==========
+# ========== 请求体结构调试(检查其他平台请求体结构) ==========
+export DEBUG_REQUESTS=false
+# 是否显示完整内容
+export DEBUG_VERBOSE=false
+# ========== 请求体结构调试结束 ==========
+
 # -----内存自动清理监控配置-----
 # 检查间隔时间(单位: 分钟)
 export MEMORY_CHECK_INTERVAL=60
 # 内存清理阈值, 根据设置并发适当调整(单位: MB)
-export HEAP_WARNING_THRESHOLD=1024
+export HEAP_WARNING_THRESHOLD=2048
 # 设置达到指定内存阈值自动清理
 export AUTO_GC_ON_HIGH_MEMORY=false
 
@@ -126,10 +156,7 @@ export HEALTH_CHECK_BEFORE_LOCK=true
 # 获取方法: you.com页面, 按f12，切换'网络(network)', 任意选择一个模型发送请求，在第4列(文件 file)
 # 找到类似: `_next/data/`开头: `_next/data/0eae4547518d0f954439be9efdaae87c915b8921/en-US/search.json?q...`网址 (可以用搜索筛选)
 # 将`0eae4547518d0f954439be9efdaae87c915b8921`填入`YOU_BUILD_HASH`，注意不要有空格。
-export YOU_BUILD_HASH=3cfa46d
-
-# 设置开启<think>内置思考传输
-export ENABLE_THINKING_CHAIN=true
+export YOU_BUILD_HASH=
 
 # 设置会话自动释放时间(单位:秒) (0=禁用自动释放)
 export SESSION_LOCK_TIMEOUT=180
@@ -164,7 +191,7 @@ export TUNNEL_TYPE=ngrok
 # 设置localtunnel子域名(留空则为随机域名)
 export SUBDOMAIN=
 
-# 设置 ngrok AUTH TOKEN
+# ========== 设置 ngrok AUTH TOKEN ==========
 # 这是 ngrok 账户的身份验证令牌。可以在 ngrok 仪表板的 "Auth" 部分找到它。
 # 免费账户和付费账户都需要设置此项。
 # ngrok网站: https://dashboard.ngrok.com
@@ -176,11 +203,26 @@ export NGROK_AUTH_TOKEN=
 # 使用此功能前，请确保已在 ngrok 仪表板中添加并验证了该域名。
 # 格式示例：your-custom-domain.com
 # 如果使用免费账户或不想使用自定义域名，请将此项留空。
+# 设置 ngrok 自定义域名
 export NGROK_CUSTOM_DOMAIN=
+# 设置 ngrok 子域名
 export NGROK_SUBDOMAIN=
+# 区域选择: us (美国), eu (欧洲), ap (亚太), au (澳大利亚), sa (南美), jp (日本), in (印度)
+export NGROK_REGION=jp
+# 启用健康监控
+export NGROK_HEALTH_CHECK=false
+# 健康检查间隔(毫秒)
+export NGROK_HEALTH_INTERVAL=60000
+# 最大重试次数
+export NGROK_MAX_RETRIES=2
+# 管理界面地址
+export NGROK_WEB_ADDR=127.0.0.1:4040
+# 强制TLS
+export NGROK_BIND_TLS=true
+# ========== 设置 ngrok AUTH TOKEN 结束 ==========
 
 # 设置 PASSWORD API密码
-export PASSWORD=12345678
+export PASSWORD=
 
 # 设置 PORT 端口
 export PORT=8080
@@ -189,21 +231,29 @@ export PORT=8080
 export AI_MODEL=
 
 # 自定义会话模式
-export USE_CUSTOM_MODE=true
+export USE_CUSTOM_MODE=false
 
 # 启用模式轮换
 # 只有当 USE_CUSTOM_MODE 和 ENABLE_MODE_ROTATION 都设置为 true 时，才会启用模式轮换功能。
 # 可以在自定义模式和默认模式之间动态切换
-export ENABLE_MODE_ROTATION=true
+export ENABLE_MODE_ROTATION=false
 
 # 设置伪造真role (如果启用，必须使用txt格式上传)
-export USE_BACKSPACE_PREFIX=true
+export USE_BACKSPACE_PREFIX=false
 
 # 设置上传文件格式 docx | txt | json
 export UPLOAD_FILE_FORMAT=txt
 
 # 设置是否启用 CLEWD 后处理
 export CLEWD_ENABLED=false
+
+# 检查端口是否被占用
+if lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null ; then
+    echo "Port $PORT is already in use"
+    echo "Killing process..."
+    sudo fuser -k $PORT/tcp
+    sleep 2
+fi
 
 echo "正在启动... (使用 Ctrl+C 退出)"
 

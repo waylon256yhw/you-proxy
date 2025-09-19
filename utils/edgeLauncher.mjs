@@ -14,29 +14,13 @@ const execPromise = promisify(exec);
  * @param {string} userDataDir - 用户数据目录
  * @param {string} edgePath - Edge浏览器路径
  * @param {number} debugPort - 调试端口
+ * @param env
  * @returns {Promise<object>} - browser和page
  */
-export async function launchEdgeBrowser(userDataDir, edgePath, debugPort = 9222) {
+export async function launchEdgeBrowser(userDataDir, edgePath, debugPort = 9222, env = {}) {
     if (!fs.existsSync(userDataDir)) {
         fs.mkdirSync(userDataDir, {recursive: true});
     }
-
-    // 关闭可能的Edge进程
-    // try {
-    //     if (os.platform() === 'win32') {
-    //         await execPromise('taskkill /f /im msedge.exe').catch(() => {
-    //         });
-    //     } else if (os.platform() === 'darwin') {
-    //         // macOS
-    //         await execPromise('pkill -f "Microsoft Edge"').catch(() => {
-    //         });
-    //     } else {
-    //         // Linux
-    //         await execPromise('pkill -f "microsoft-edge"').catch(() => {
-    //         });
-    //     }
-    // } catch (e) {
-    // }
 
     const remoteDebuggingPort = debugPort;
     let edgeProcess;
@@ -59,9 +43,16 @@ export async function launchEdgeBrowser(userDataDir, edgePath, debugPort = 9222)
         // 启动Edge浏览器
         const cmdArgs = args.join(' ');
         const cmd = `"${edgePath}" ${cmdArgs}`;
-        edgeProcess = exec(cmd);
 
-        console.log(`等待Edge浏览器启动...`);
+        // 环境变量启动进程
+        edgeProcess = exec(cmd, {
+            env: {
+                ...process.env,
+                ...env
+            }
+        });
+
+        console.log(`等待Edge浏览器启动... (DISPLAY=${env.DISPLAY || process.env.DISPLAY})`);
         await new Promise(resolve => setTimeout(resolve, 3000));
 
         const puppeteer = await import('puppeteer-core');
@@ -79,19 +70,8 @@ export async function launchEdgeBrowser(userDataDir, edgePath, debugPort = 9222)
             page = await browser.newPage();
         }
 
-        const originalUserAgent = await page.evaluate(() => navigator.userAgent);
-        // console.log(`Edge浏览器原始用户代理: ${originalUserAgent}`);
-
         // 应用随机指纹
         const fingerprint = await setupBrowserFingerprint(page, 'edge');
-
-        // 验证指纹是否成功应用
-        const newUserAgent = await page.evaluate(() => navigator.userAgent);
-        // console.log(`Edge浏览器应用指纹后用户代理: ${newUserAgent}`);
-
-        if (!newUserAgent.includes('Edg')) {
-            console.warn(`警告: 浏览器可能不是Edge。`);
-        }
 
         return {
             browser,

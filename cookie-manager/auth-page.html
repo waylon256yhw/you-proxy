@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cookie Manager - 身份验证</title>
+    <link rel="stylesheet" href="/cookie-manager/static/css/auth.css?v=1.0">
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-background">
+            <div class="floating-shapes">
+                <span class="shape"></span>
+                <span class="shape"></span>
+                <span class="shape"></span>
+                <span class="shape"></span>
+                <span class="shape"></span>
+            </div>
+        </div>
+        
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="auth-logo">🍪</div>
+                <h1 class="auth-title">Cookie Manager</h1>
+                <p class="auth-subtitle">安全认证</p>
+            </div>
+            
+            <!-- 登录表单 -->
+            <div id="loginForm" class="auth-form">
+                <div class="form-group">
+                    <label for="password" class="form-label">
+                        <i class="icon-lock"></i>
+                        密码
+                    </label>
+                    <input 
+                        type="password" 
+                        id="password" 
+                        class="form-input" 
+                        placeholder="请输入密码"
+                        autocomplete="current-password"
+                    >
+                    <button type="button" class="toggle-password" onclick="togglePasswordVisibility('password')">
+                        <i class="icon-eye"></i>
+                    </button>
+                </div>
+                
+                <button class="btn-auth" onclick="handleLogin()">
+                    <span class="btn-text">登录</span>
+                    <span class="btn-loading" style="display: none;">
+                        <i class="spinner"></i>
+                    </span>
+                </button>
+                
+                <div id="loginError" class="error-message" style="display: none;"></div>
+            </div>
+            
+            <!-- 设置新密码表单 -->
+            <div id="setupForm" class="auth-form" style="display: none;">
+                <div class="setup-notice">
+                    <i class="icon-info"></i>
+                    <p>首次登录，请设置新密码</p>
+                </div>
+                
+                <div class="form-group">
+                    <label for="newPassword" class="form-label">
+                        <i class="icon-key"></i>
+                        新密码
+                    </label>
+                    <input 
+                        type="password" 
+                        id="newPassword" 
+                        class="form-input" 
+                        placeholder="请输入新密码（至少8位）"
+                        autocomplete="new-password"
+                    >
+                    <button type="button" class="toggle-password" onclick="togglePasswordVisibility('newPassword')">
+                        <i class="icon-eye"></i>
+                    </button>
+                </div>
+                
+                <div class="form-group">
+                    <label for="confirmPassword" class="form-label">
+                        <i class="icon-check"></i>
+                        确认密码
+                    </label>
+                    <input 
+                        type="password" 
+                        id="confirmPassword" 
+                        class="form-input" 
+                        placeholder="请再次输入新密码"
+                        autocomplete="new-password"
+                    >
+                    <button type="button" class="toggle-password" onclick="togglePasswordVisibility('confirmPassword')">
+                        <i class="icon-eye"></i>
+                    </button>
+                </div>
+                
+                <div class="password-strength">
+                    <div class="strength-bar">
+                        <div class="strength-fill" id="strengthFill"></div>
+                    </div>
+                    <span class="strength-text" id="strengthText">密码强度</span>
+                </div>
+                
+                <button class="btn-auth btn-primary" onclick="handleSetupPassword()">
+                    <span class="btn-text">设置密码</span>
+                    <span class="btn-loading" style="display: none;">
+                        <i class="spinner"></i>
+                    </span>
+                </button>
+                
+                <div id="setupError" class="error-message" style="display: none;"></div>
+            </div>
+            
+            <!-- 成功消息 -->
+            <div id="successMessage" class="success-message" style="display: none;">
+                <i class="icon-success"></i>
+                <p>密码设置成功！正在跳转...</p>
+            </div>
+        </div>
+        
+        <div class="auth-footer">
+            <p>© 2025 Cookie Manager - V1.0 Edition</p>
+        </div>
+    </div>
+    
+    <script src="/cookie-manager/static/js/auth.js?v=1.0"></script>
+    <script>
+        // 备份
+        if (typeof handleLogin === 'undefined') {
+            console.error('External auth.js failed to load, using fallback');
+
+            window.handleLogin = async function() {
+                alert('脚本加载失败，请刷新页面重试');
+                window.location.reload();
+            }
+
+            window.handleSetupPassword = async function() {
+                alert('脚本加载失败，请刷新页面重试');
+                window.location.reload();
+            }
+
+            window.togglePasswordVisibility = function(inputId) {
+                const input = document.getElementById(inputId);
+                if (input) {
+                    input.type = input.type === 'password' ? 'text' : 'password';
+                }
+            }
+        }
+    </script>
+</body>
+</html>

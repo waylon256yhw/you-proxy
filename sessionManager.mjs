@@ -991,14 +991,25 @@ class SessionManager {
 
         if (this._totalRequestCount % 100 === 0) {
             console.log('\n📊 === 均衡统计 ===');
-            const stats = this.usernameList.map(username => {
-                const session = this.sessions[username];
-                return {
-                    username,
-                    requests: session.requestCount,
-                    percentage: ((session.requestCount / this._totalRequestCount) * 100).toFixed(2)
-                };
-            }).sort((a, b) => b.requests - a.requests);
+            const stats = this.usernameList
+                .filter(username => {
+                    const session = this.sessions[username];
+                    return session && typeof session.requestCount === 'number';
+                })
+                .map(username => {
+                    const session = this.sessions[username];
+                    return {
+                        username,
+                        requests: session.requestCount,
+                        percentage: ((session.requestCount / this._totalRequestCount) * 100).toFixed(2)
+                    };
+                })
+                .sort((a, b) => b.requests - a.requests);
+
+            if (stats.length === 0) {
+                console.log('没有有效的会话统计数据');
+                return;
+            }
 
             stats.forEach(stat => {
                 const bar = '█'.repeat(Math.floor(stat.percentage / 2));

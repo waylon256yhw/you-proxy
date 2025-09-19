@@ -47,6 +47,8 @@ class RequestLogger {
                 new winston.transports.File({filename: logFilePath})
             ]
         });
+
+        // 初始化黑名单
         try {
             if (!fs.existsSync(blacklistFilePath)) {
                 fs.writeFileSync(blacklistFilePath, JSON.stringify({}), 'utf8');
@@ -60,6 +62,11 @@ class RequestLogger {
         this.temporaryLimits = {};  // 每个IP的临时限制到期时间
         this.ipMutexes = {};  // 为每个IP分配一个独立的Mutex
         this.blacklistMutex = new Mutex();  // 黑名单文件的Mutex
+        this.tempLimitsFileMutex = new Mutex(); // 临时限制文件Mutex
+        this.isWatcherActive = false; // 监听器状态
+        this.pendingSave = false; // 是否有待保存更改
+
+        // 初始化临时限制文件
         try {
             if (!fs.existsSync(tempLimitFilePath)) {
                 fs.writeFileSync(tempLimitFilePath, JSON.stringify({}), 'utf8');
@@ -72,12 +79,17 @@ class RequestLogger {
         this.loadTempLimitsFromFile();
 
         // 监听文件变化
-        this.setupTempLimitsFileWatcher();
+        setTimeout(() => {
+            this.setupTempLimitsFileWatcher();
+        }, 1000);
 
         // 清理无活动IP
         setInterval(() => {
             this.cleanUpInactiveIPs();
         }, 60 * 60 * 1000);
+
+        // 批量保存
+        this.saveDebounceTimer = null;
     }
 
     // 获取IP的Mutex
@@ -88,12 +100,38 @@ class RequestLogger {
         return this.ipMutexes[ip];
     }
 
+    // 原子写入文件
+    async atomicWriteFile(filepath, data, retries = 3) {
+        const tempFile = `${filepath}.tmp`;
+
+        for (let i = 0; i < retries; i++) {
+            try {
+                // 写入临时
+                await fs.promises.writeFile(tempFile, data, 'utf8');
+
+                await fs.promises.rename(tempFile, filepath);
+                return true;
+            } catch (error) {
+                if (error.code === 'EBUSY' && i < retries - 1) {
+                    // EBUSY错误
+                    await new Promise(resolve => setTimeout(resolve, 100 * (i + 1)));
+                    continue;
+                } else if (i === retries - 1) {
+                    try {
+                        await fs.promises.unlink(tempFile).catch(() => {});
+                    } catch {}
+                    throw error;
+                }
+            }
+        }
+        return false;
+    }
+
     // 从文件加载临时限制
-    loadTempLimitsFromFile() {
+    async loadTempLimitsFromFile() {
         try {
-            const dataRaw = fs.readFileSync(tempLimitFilePath, 'utf8');
+            const dataRaw = await fs.promises.readFile(tempLimitFilePath, 'utf8');
             if (!dataRaw.trim()) {
-                // 文件为空，则 no-op
                 return;
             }
             const parsed = JSON.parse(dataRaw);
@@ -106,38 +144,88 @@ class RequestLogger {
                     this.temporaryLimits[ip] = expireTime;
                 }
             }
-            this.saveTempLimitsToFile();
+            // 清理过期记录
+            this.scheduleSave();
         } catch (error) {
-            console.error(`读取临时限制文件出错：${error.message}`);
-        }
-    }
-
-    saveTempLimitsToFile() {
-        try {
-            const now = Date.now();
-            // 移除过期记录
-            for (const ip in this.temporaryLimits) {
-                if (this.temporaryLimits[ip] <= now) {
-                    delete this.temporaryLimits[ip];
-                }
+            if (error.code !== 'ENOENT') {
+                console.error(`读取临时限制文件出错：${error.message}`);
             }
-            fs.writeFileSync(
-                tempLimitFilePath,
-                JSON.stringify(this.temporaryLimits, null, 4),
-                'utf8'
-            );
-        } catch (error) {
-            console.error(`写入临时限制文件出错：${error.message}`);
         }
     }
 
+    scheduleSave() {
+        if (this.saveDebounceTimer) {
+            clearTimeout(this.saveDebounceTimer);
+        }
+
+        this.pendingSave = true;
+        this.saveDebounceTimer = setTimeout(() => {
+            this.saveTempLimitsToFile();
+        }, 500);
+    }
+
+    // 保存临时限制到文件
+    async saveTempLimitsToFile() {
+        if (!this.pendingSave) return;
+
+        await this.tempLimitsFileMutex.runExclusive(async () => {
+            try {
+                const wasWatcherActive = this.isWatcherActive;
+                if (wasWatcherActive && this.watcher) {
+                    this.isWatcherActive = false;
+                }
+
+                const now = Date.now();
+                // 移除过期
+                const cleanedLimits = {};
+                for (const ip in this.temporaryLimits) {
+                    if (this.temporaryLimits[ip] > now) {
+                        cleanedLimits[ip] = this.temporaryLimits[ip];
+                    }
+                }
+                this.temporaryLimits = cleanedLimits;
+
+                // 原子写入
+                const data = JSON.stringify(this.temporaryLimits, null, 4);
+                await this.atomicWriteFile(tempLimitFilePath, data);
+
+                this.pendingSave = false;
+
+                // 恢复监听器
+                if (wasWatcherActive) {
+                    setTimeout(() => {
+                        this.isWatcherActive = true;
+                    }, 100);
+                }
+            } catch (error) {
+                console.error(`写入临时限制文件出错：${error.message}`);
+                setTimeout(() => {
+                    this.scheduleSave();
+                }, 1000);
+            }
+        });
+    }
+
+    // 设置文件监听器
     setupTempLimitsFileWatcher() {
         try {
-            fs.watch(tempLimitFilePath, (eventType, filename) => {
-                if (eventType === 'change') {
-                    this.loadTempLimitsFromFile();
+            const options = {
+                persistent: false,
+                interval: 1000
+            };
+
+            this.watcher = fs.watch(tempLimitFilePath, options, (eventType) => {
+                if (eventType === 'change' && this.isWatcherActive && !this.pendingSave) {
+                    if (this.loadDebounceTimer) {
+                        clearTimeout(this.loadDebounceTimer);
+                    }
+                    this.loadDebounceTimer = setTimeout(() => {
+                        this.loadTempLimitsFromFile();
+                    }, 200);
                 }
             });
+
+            this.isWatcherActive = true;
         } catch (err) {
             console.error(`监听临时限制文件出错：${err.message}`);
         }
@@ -148,17 +236,17 @@ class RequestLogger {
         return await this.blacklistMutex.runExclusive(async () => {
             try {
                 if (!fs.existsSync(blacklistFilePath)) {
-                    fs.writeFileSync(blacklistFilePath, JSON.stringify({}), 'utf8');
+                    await this.atomicWriteFile(blacklistFilePath, JSON.stringify({}));
                 }
-                const blacklistData = fs.readFileSync(blacklistFilePath, 'utf8');
+                const blacklistData = await fs.promises.readFile(blacklistFilePath, 'utf8');
                 const blacklist = JSON.parse(blacklistData || '{}');
                 const info = blacklist[ip];
                 if (info && info.permanent) {
                     return true;
                 } else if (info) {
-                    // 移除非法
+                    // 移除非法记录
                     delete blacklist[ip];
-                    fs.writeFileSync(blacklistFilePath, JSON.stringify(blacklist, null, 4), 'utf8');
+                    await this.atomicWriteFile(blacklistFilePath, JSON.stringify(blacklist, null, 4));
                     return false;
                 }
                 return false;
@@ -174,17 +262,16 @@ class RequestLogger {
         await this.blacklistMutex.runExclusive(async () => {
             try {
                 if (!fs.existsSync(blacklistFilePath)) {
-                    fs.writeFileSync(blacklistFilePath, JSON.stringify({}), 'utf8');
+                    await this.atomicWriteFile(blacklistFilePath, JSON.stringify({}));
                 }
-                const dataRaw = fs.readFileSync(blacklistFilePath, 'utf8');
+                const dataRaw = await fs.promises.readFile(blacklistFilePath, 'utf8');
                 const blacklist = JSON.parse(dataRaw || '{}');
 
                 if (!blacklist[ip]) {
                     blacklist[ip] = {permanent: true};
-                    fs.writeFileSync(
+                    await this.atomicWriteFile(
                         blacklistFilePath,
-                        JSON.stringify(blacklist, null, 4),
-                        'utf8'
+                        JSON.stringify(blacklist, null, 4)
                     );
                 }
             } catch (err) {
@@ -240,12 +327,13 @@ class RequestLogger {
         // 清理过期的临时限制
         if (this.temporaryLimits[ip] && now >= this.temporaryLimits[ip]) {
             delete this.temporaryLimits[ip];
-            this.saveTempLimitsToFile();
+            this.scheduleSave();
         }
     }
 
     // 定期清理长期未活动的IP数据
     cleanUpInactiveIPs() {
+        let hasChanges = false;
         for (const ip in this.ipRequestRecords) {
             const noRecentRequests = !this.ipRequestRecords[ip] || this.ipRequestRecords[ip].length === 0;
             const no30sTriggers = !this.ip30sTriggerCount[ip] || this.ip30sTriggerCount[ip].length === 0;
@@ -255,7 +343,12 @@ class RequestLogger {
                 delete this.ipRequestRecords[ip];
                 delete this.ip30sTriggerCount[ip];
                 delete this.ipMutexes[ip];
+                hasChanges = true;
             }
+        }
+
+        if (hasChanges) {
+            this.scheduleSave();
         }
     }
 
@@ -275,7 +368,7 @@ class RequestLogger {
         let needLog = true;
 
         try {
-            await ipMutex.runExclusive(() => {
+            await ipMutex.runExclusive(async () => {
                 const now = Date.now();
 
                 // 检查临时限制
@@ -292,17 +385,17 @@ class RequestLogger {
                 this.ipRequestRecords[ip].push(now);
                 this._cleanUpRecords(ip);
 
-                // >=4次 → 加入黑名单
+                // >=4次/6秒 → 加入黑名单
                 const requestsIn6s = this.ipRequestRecords[ip].filter(
                     t => now - t <= 6 * 1000
                 );
                 if (requestsIn6s.length >= 3) {
-                    this.addToBlacklist(ip);
+                    await this.addToBlacklist(ip);
                     limitInfo = ' | Limit: PERMANENT';
                     throw new Error(`并发请求过多，已永久限制。`);
                 }
 
-                // (>=3次 → 临时限制)
+                // >=3次/30秒 → 临时限制
                 const requestsIn30s = this.ipRequestRecords[ip].filter(
                     t => now - t <= 30 * 1000
                 );
@@ -318,13 +411,13 @@ class RequestLogger {
                         const duration = 6 * 60 * 60 * 1000;
                         this.temporaryLimits[ip] = now + duration;
                         limitInfo = ` | Limit: ${duration}ms`;
-                        this.saveTempLimitsToFile();
+                        this.scheduleSave();
                         throw new Error(`您在24小时内多次频繁请求，限制6小时`);
                     } else {
                         const duration = 60 * 1000;
                         this.temporaryLimits[ip] = now + duration;
                         limitInfo = ` | Limit: ${duration}ms`;
-                        this.saveTempLimitsToFile();
+                        this.scheduleSave();
                         throw new Error(`请求过多, 限制1分钟`);
                     }
                 }
@@ -335,6 +428,27 @@ class RequestLogger {
         }
         if (needLog) {
             this.logger.info(`${baseInfo}${limitInfo}`);
+        }
+    }
+
+    // 清理资源
+    async cleanup() {
+        // 关闭文件监听器
+        if (this.watcher) {
+            this.watcher.close();
+        }
+
+        // 清除定时器
+        if (this.saveDebounceTimer) {
+            clearTimeout(this.saveDebounceTimer);
+        }
+        if (this.loadDebounceTimer) {
+            clearTimeout(this.loadDebounceTimer);
+        }
+
+        // 保存最后更改
+        if (this.pendingSave) {
+            await this.saveTempLimitsToFile();
         }
     }
 }

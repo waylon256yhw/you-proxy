@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>Cookie Manager - V1.0 - Edition</title>
+    <link href="./static/css/style.css" rel="stylesheet">
+    <link href="./static/css/anime.css" rel="stylesheet">
+    <link href="./static/css/sidebar.css" rel="stylesheet">
+</head>
+<body>
+<!-- 全局加载器 -->
+<div class="global-loader" id="globalLoader">
+    <div class="loader-content">
+        <div class="kawaii-loader">
+            <div class="cat-body"></div>
+            <div class="cat-tail"></div>
+        </div>
+        <p>Loading nya~</p>
+    </div>
+</div>
+
+<!-- 通知容器 -->
+<div class="notification-container" id="notificationContainer"></div>
+
+<!-- 背景装饰 -->
+<div class="bg-decoration">
+    <div class="sakura"></div>
+    <div class="bubble"></div>
+    <div class="star"></div>
+</div>
+
+<div class="container">
+    <!-- 头部 -->
+    <header class="main-header">
+        <div class="header-content">
+            <div class="logo-section">
+                <div class="logo-icon">🍪</div>
+                <h1 class="logo-text">
+                    Cookie Manager
+                    <span class="logo-subtitle">V1.0 - Edition</span>
+                </h1>
+            </div>
+            <div class="stats-section">
+                <div class="stat-card">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-info">
+                        <span class="stat-label">总计</span>
+                        <span class="stat-value" id="totalCount">0</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">❌</div>
+                    <div class="stat-info">
+                        <span class="stat-label">无效</span>
+                        <span class="stat-value" id="invalidCount">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 工具栏 -->
+    <div class="toolbar">
+        <div class="toolbar-actions">
+            <div class="toolbar-group">
+                <button class="btn btn-primary" onclick="cookieManager.showModal('addModal')">
+                    <i class="icon-add"></i>
+                    <span>添加Cookie</span>
+                </button>
+                <button class="btn btn-success" onclick="cookieManager.showModal('batchAddModal')">
+                    <i class="icon-batch"></i>
+                    <span>批量添加</span>
+                </button>
+                <button class="btn btn-danger" onclick="cookieManager.deleteSelected()">
+                    <i class="icon-delete"></i>
+                    <span>删除选中</span>
+                </button>
+                <button class="btn btn-warning" onclick="cookieManager.undoSelected()">
+                    <i class="icon-undo"></i>
+                    <span>撤销选中</span>
+                </button>
+                <button class="btn btn-info" onclick="cookieManager.extractEmails()">
+                    <i class="icon-email"></i>
+                    <span>提取邮箱</span>
+                </button>
+                <button class="btn btn-status" onclick="cookieManager.batchSetStatus()">
+                    <i class="icon-status"></i>
+                    <span>批量状态</span>
+                </button>
+                <button class="btn btn-secondary" onclick="cookieManager.refreshSessions()">
+                    <i class="icon-refresh"></i>
+                    <span>刷新</span>
+                </button>
+                <button class="btn btn-debug" onclick="cookieManager.toggleDebugMode()">
+                    <i class="icon-debug"></i>
+                    <span>调试</span>
+                </button>
+            </div>
+        </div>
+        <div class="search-row">
+            <div class="search-box">
+                <input class="search-input"
+                       id="searchInput"
+                       placeholder="搜索Cookie或邮箱..."
+                       type="text">
+                <i class="icon-search"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div class="main-content">
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                <tr>
+                    <th width="50">
+                        <div class="checkbox-wrapper">
+                            <input class="checkbox-input" id="selectAll" type="checkbox">
+                            <label class="checkbox-label" for="selectAll"></label>
+                        </div>
+                    </th>
+                    <th width="80">序号</th>
+                    <th width="250">邮箱</th>
+                    <th>Cookie预览</th>
+                    <th width="120">状态</th>
+                    <th width="120">操作</th>
+                </tr>
+                </thead>
+                <tbody id="sessionsBody">
+                <!-- 动态内容 -->
+                </tbody>
+            </table>
+        </div>
+        <!-- 分页容器 -->
+        <div class="pagination-container" id="paginationContainer" style="display: none;">
+            <div class="pagination-info">
+                <span class="total-info">共 <span id="totalItems">0</span> 条记录</span>
+                <div class="page-size-selector">
+                    <label>每页显示：</label>
+                    <select id="pageSizeSelect" onchange="cookieManager.changePageSize(this.value)">
+                        <option value="10">10条</option>
+                        <option value="20">20条</option>
+                        <option value="50">50条</option>
+                        <option value="100">100条</option>
+                    </select>
+                </div>
+            </div>
+            <div class="pagination-controls">
+                <div class="loading-spinner"></div>
+                <button class="page-btn page-first" onclick="cookieManager.goToFirstPage()" title="第一页">
+                    <i class="icon-first">⏮</i>
+                </button>
+                <button class="page-btn page-prev" onclick="cookieManager.goToPrevPage()" title="上一页">
+                    <i class="icon-prev">◀</i>
+                </button>
+                <div class="page-numbers" id="pageNumbers"></div>
+                <button class="page-btn page-next" onclick="cookieManager.goToNextPage()" title="下一页">
+                    <i class="icon-next">▶</i>
+                </button>
+                <button class="page-btn page-last" onclick="cookieManager.goToLastPage()" title="最后一页">
+                    <i class="icon-last">⏭</i>
+                </button>
+                <div class="page-jump">
+                    <input id="pageJumpInput" min="1" placeholder="页码" type="number">
+                    <button class="page-btn page-go" onclick="cookieManager.jumpToPage()">跳转</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 模态框 -->
+<!-- 添加Cookie -->
+<div class="modal" id="addModal">
+    <div class="modal-wrapper">
+        <div class="modal-content modal-wide">
+            <div class="modal-header">
+                <h2 class="modal-title">
+                    <i class="icon-cookie"></i>
+                    添加Cookie
+                </h2>
+                <button class="modal-close" onclick="cookieManager.closeModal('addModal')">
+                    <i class="icon-close"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">完整Cookie内容</label>
+                    <textarea class="form-textarea"
+                              id="newCookie"
+                              oninput="cookieManager.onCookieInput()"
+                              placeholder="输入完整的Cookie字符串..."
+                              rows="3"></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group flex-1">
+                        <label class="form-label">DS字段</label>
+                        <input class="form-input"
+                               id="dsField"
+                               oninput="cookieManager.onFieldInput()"
+                               placeholder="DS token..."
+                               type="text">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label class="form-label">DSR字段</label>
+                        <input class="form-input"
+                               id="dsrField"
+                               oninput="cookieManager.onFieldInput()"
+                               placeholder="DSR token..."
+                               type="text">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">格式化预览</label>
+                    <div class="cookie-preview-box" id="cookiePreview">
+                        <div class="preview-placeholder">输入Cookie后将显示格式化预览</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="cookieManager.addSession()">
+                    <i class="icon-check"></i>
+                    确认添加
+                </button>
+                <button class="btn btn-secondary" onclick="cookieManager.closeModal('addModal')">
+                    <i class="icon-close"></i>
+                    取消
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 批量添加 -->
+<div class="modal" id="batchAddModal">
+    <div class="modal-wrapper">
+        <div class="modal-content modal-wide">
+            <div class="modal-header">
+                <h2 class="modal-title">
+                    <i class="icon-batch"></i>
+                    批量添加Cookie
+                </h2>
+                <button class="modal-close" onclick="cookieManager.closeModal('batchAddModal')">
+                    <i class="icon-close"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Cookie列表（每行一个）</label>
+                    <textarea class="form-textarea"
+                              id="batchCookies"
+                              oninput="cookieManager.onBatchInput()"
+                              placeholder="每行输入一个完整的Cookie..."
+                              rows="10"></textarea>
+                    <div class="form-hint">
+                        <span id="batchCount">0</span> 个Cookie
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="cookieManager.batchAddSessions()">
+                    <i class="icon-check"></i>
+                    批量添加
+                </button>
+                <button class="btn btn-secondary" onclick="cookieManager.closeModal('batchAddModal')">
+                    <i class="icon-close"></i>
+                    取消
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑Cookie -->
+<div class="modal" id="editModal">
+    <div class="modal-wrapper">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">
+                    <i class="icon-edit"></i>
+                    编辑Cookie
+                </h2>
+                <button class="modal-close" onclick="cookieManager.closeModal('editModal')">
+                    <i class="icon-close"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Cookie内容</label>
+                    <textarea class="form-textarea"
+                              id="editCookie"
+                              rows="6"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="cookieManager.updateSession()">
+                    <i class="icon-save"></i>
+                    保存修改
+                </button>
+                <button class="btn btn-secondary" onclick="cookieManager.closeModal('editModal')">
+                    <i class="icon-close"></i>
+                    取消
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 批量设置状态模态框 -->
+<div class="modal" id="batchStatusModal">
+    <div class="modal-wrapper">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">
+                    <i class="icon-status"></i>
+                    批量设置状态
+                </h2>
+                <button class="modal-close" onclick="cookieManager.closeModal('batchStatusModal')">
+                    <i class="icon-close"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">选中的邮箱</label>
+                    <div class="selected-emails-list" id="selectedEmailsList">
+                        <!-- 动态显示选中的邮箱列表 -->
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">状态说明</label>
+                    <input type="text"
+                           id="batchStatusInput"
+                           class="form-input"
+                           placeholder="留空表示设为有效">
+                    <div class="form-hint">
+                        <div>快捷状态：</div>
+                        <div class="status-shortcuts">
+                            <button class="status-shortcut" onclick="cookieManager.setStatusShortcut('已失效')">已失效</button>
+                            <button class="status-shortcut" onclick="cookieManager.setStatusShortcut('无有效订阅')">无有效订阅</button>
+                            <button class="status-shortcut" onclick="cookieManager.setStatusShortcut('账号被封禁')">账号被封禁</button>
+                            <button class="status-shortcut" onclick="cookieManager.setStatusShortcut('域名被封禁')">域名被封禁</button>
+                            <button class="status-shortcut" onclick="cookieManager.setStatusShortcut('')">清除状态</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="cookieManager.saveBatchStatus()">
+                    <i class="icon-save"></i>
+                    保存
+                </button>
+                <button class="btn btn-secondary" onclick="cookieManager.closeModal('batchStatusModal')">
+                    <i class="icon-close"></i>
+                    取消
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 脚本文件 -->
+<script src="./static/js/auth-helper.js"></script>
+<script src="./static/js/debug-logger.js"></script>
+<script src="./static/js/api.js"></script>
+<script src="./static/js/ui.js"></script>
+<script src="./static/js/cookie-manager.js"></script>
+<script src="./static/js/sidebar.js"></script>
+</body>
+</html>
